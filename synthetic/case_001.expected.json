@@ -1,0 +1,16 @@
+{
+  "chief_complaint": "Follow-up for depression and anxiety",
+  "subjective": "34-year-old female with recurrent MDD and GAD reports improving mood over the past three weeks since sertraline increased to 100 mg daily. Sleep is more consolidated at 6-7 hours, energy modestly better. Continues to endorse anticipatory worry around work meetings; denies panic attacks. Denies SI, HI, and psychotic symptoms.",
+  "objective": "Alert and oriented. Affect mildly constricted but reactive. No psychomotor agitation.",
+  "assessment": [
+    {"description": "Recurrent major depressive disorder", "status": "active"},
+    {"description": "Generalized anxiety disorder", "status": "active"}
+  ],
+  "plan": "Continue sertraline 100 mg PO daily. Continue hydroxyzine 25 mg PO every 6 hours PRN for breakthrough anxiety. Encouraged adherence to CBT homework. Return in 6 weeks.",
+  "medications_prescribed": [
+    {"name": "sertraline", "dose": "100 mg", "route": "PO", "frequency": "daily"},
+    {"name": "hydroxyzine", "dose": "25 mg", "route": "PO", "frequency": "every 6 hours as needed"}
+  ],
+  "follow_up": "6 weeks",
+  "flags_for_review": []
+}

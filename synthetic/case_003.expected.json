@@ -1,0 +1,17 @@
+{
+  "chief_complaint": "New patient evaluation for attention difficulties",
+  "subjective": "28-year-old male, self-referred, reports lifelong distractibility worsened over the past year in graduate school: unable to complete tasks, loses items, procrastinates, forgets appointments. Denies hyperactivity but endorses internal restlessness. No history of mania, psychosis, or substance use beyond moderate caffeine. Family history of ADHD in father. Mood stable, sleep adequate, appetite normal.",
+  "objective": "Alert, oriented. Fluent speech. Intact insight and judgment. No psychomotor abnormalities.",
+  "assessment": [
+    {"description": "ADHD, predominantly inattentive presentation", "status": "active"},
+    {"description": "Generalized anxiety disorder", "status": "ruled_out"}
+  ],
+  "plan": "Order baseline EKG. Start atomoxetine 40 mg PO daily. Schedule neuropsychological testing. Follow up in 4 weeks.",
+  "medications_prescribed": [
+    {"name": "atomoxetine", "dose": "40 mg", "route": "PO", "frequency": "daily"}
+  ],
+  "follow_up": "4 weeks",
+  "flags_for_review": [
+    "GAD listed as rule-out — confirm whether anxiety screening was completed and whether further workup is planned."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "chief_complaint": "Worsening depressive symptoms in bipolar II disorder",
+  "subjective": "47-year-old male with bipolar II disorder on lamotrigine 200 mg daily reports two weeks of worsening depression: low mood most of the day, anhedonia, decreased appetite, hypersomnia 12 hours/night. No hypomanic features. Denies active SI but endorses passive death wishes. No medication side effects.",
+  "objective": "Not stated.",
+  "assessment": [
+    {"description": "Bipolar II disorder, current depressive episode", "status": "active"}
+  ],
+  "plan": "Increase lamotrigine to 250 mg PO daily, reassess in 2 weeks. Add bupropion XL 150 mg PO daily, titrate to 300 mg if tolerated. Discussed activation symptoms and switch risk. Safety plan reviewed and documented. Return in 2 weeks.",
+  "medications_prescribed": [
+    {"name": "lamotrigine", "dose": "250 mg", "route": "PO", "frequency": "daily"},
+    {"name": "bupropion XL", "dose": "150 mg", "route": "PO", "frequency": "daily"}
+  ],
+  "follow_up": "2 weeks",
+  "flags_for_review": [
+    "Passive death wishes endorsed — confirm safety plan documented and assess change in risk over the next visit.",
+    "Bupropion XL titration plan to 300 mg pending tolerability — confirm follow-up dose adjustment."
+  ]
+}
