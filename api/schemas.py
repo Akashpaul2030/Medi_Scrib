@@ -58,3 +58,38 @@ class SOAPNote(BaseModel):
     flags_for_review: list[str] = Field(
         description="Anything ambiguous, missing, or potentially concerning that the clinician should verify before signing — missing doses, unclear medication routes, suicidal ideation nuance, conflicting statements. Be conservative: when in doubt, flag it."
     )
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class NoteRecord(BaseModel):
+    note_id: str
+    created_at: str
+    chief_complaint: str
+    score: float | None = None
+
+
+class SearchResponse(BaseModel):
+    results: list[NoteRecord]
+    total: int
+
+
+class NoteDetail(BaseModel):
+    note_id: str
+    created_at: str
+    raw_text_length: int
+    note: SOAPNote
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1)
+
+
+class AskResponse(BaseModel):
+    answer: str
+    sources: list[NoteRecord]
+    grounded: bool
+    rewritten: bool
