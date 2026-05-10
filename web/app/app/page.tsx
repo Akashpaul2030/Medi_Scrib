@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Nav } from "@/components/nav";
 import { soapToMarkdown } from "@/lib/markdown";
-import type { Diagnosis, Medication, SOAPNote } from "@/lib/types";
+import type { AskResponse, Diagnosis, Medication, NoteDetail, NoteRecord, SOAPNote } from "@/lib/types";
 
 const ALLOWED_TYPES = ".pdf,.docx,.pptx,.html,.htm,.md,.txt";
 
@@ -20,6 +20,91 @@ export default function AppPage() {
   const [ingesting, setIngesting] = useState(false);
   const [ingestInfo, setIngestInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const outputRef = useRef<HTMLElement>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyTab, setHistoryTab] = useState<"recent" | "search" | "ask">("recent");
+  const [recentNotes, setRecentNotes] = useState<NoteRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<NoteRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historySearched, setHistorySearched] = useState(false);
+
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askResult, setAskResult] = useState<AskResponse | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
+
+  useEffect(() => { void loadRecent(); }, []);
+
+  async function loadRecent() {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch(`${API_URL}/notes`);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { results: NoteRecord[]; total: number };
+      setRecentNotes(data.results);
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Failed to load notes");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function doSearch() {
+    if (!searchQuery.trim()) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setHistorySearched(true);
+    try {
+      const res = await fetch(`${API_URL}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: searchQuery, limit: 10 }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { results: NoteRecord[]; total: number };
+      setSearchResults(data.results);
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Search failed");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function doAsk() {
+    if (!askQuestion.trim()) return;
+    setAskLoading(true);
+    setHistoryError(null);
+    setAskResult(null);
+    try {
+      const res = await fetch(`${API_URL}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: askQuestion }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as AskResponse;
+      setAskResult(data);
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Ask failed");
+    } finally {
+      setAskLoading(false);
+    }
+  }
+
+  async function loadNote(note_id: string) {
+    try {
+      const res = await fetch(`${API_URL}/notes/${note_id}`);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as NoteDetail;
+      setNote(data.note);
+      outputRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Failed to load note");
+    }
+  }
 
   async function structure() {
     setLoading(true);
@@ -108,7 +193,7 @@ export default function AppPage() {
   return (
     <div className="min-h-screen bg-paper">
       <Nav />
-      <main className="mx-auto max-w-[1180px] px-6 py-10">
+      <main className="mx-auto max-w-[1600px] px-6 py-10">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-[34px] font-medium leading-tight text-ink">
@@ -119,17 +204,25 @@ export default function AppPage() {
               right.
             </p>
           </div>
-          {note && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={reset}
+              onClick={() => setHistoryOpen(!historyOpen)}
               className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"
             >
-              New note
+              History {historyOpen ? "◂" : "▸"}
             </button>
-          )}
+            {note && (
+              <button
+                onClick={reset}
+                className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"
+              >
+                New note
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_300px]">
           <section className="rounded-xl border border-line bg-white p-5 shadow-softer">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-[13px] font-semibold uppercase tracking-wide text-mute">
@@ -195,7 +288,7 @@ export default function AppPage() {
             )}
           </section>
 
-          <section className="rounded-xl border border-line bg-white p-5 shadow-softer">
+          <section ref={outputRef} className="rounded-xl border border-line bg-white p-5 shadow-softer">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-[13px] font-semibold uppercase tracking-wide text-mute">
                 Structured SOAP note
@@ -229,9 +322,217 @@ export default function AppPage() {
               />
             )}
           </section>
+          <aside className={historyOpen ? "flex flex-col overflow-hidden rounded-xl border border-line bg-white shadow-softer" : "hidden"}>
+            <div className="flex shrink-0 border-b border-line">
+              <button
+                onClick={() => setHistoryTab("recent")}
+                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                  historyTab === "recent" ? "-mb-px border-b-2 border-teal text-teal" : "text-mute hover:text-ink"
+                }`}
+              >
+                Recent
+              </button>
+              <button
+                onClick={() => setHistoryTab("search")}
+                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                  historyTab === "search" ? "-mb-px border-b-2 border-teal text-teal" : "text-mute hover:text-ink"
+                }`}
+              >
+                Search
+              </button>
+              <button
+                onClick={() => setHistoryTab("ask")}
+                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                  historyTab === "ask"
+                    ? "-mb-px border-b-2 border-teal text-teal"
+                    : "text-mute hover:text-ink"
+                }`}
+              >
+                Ask
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3">
+              {historyError && (
+                <p className="mb-2 rounded-md border border-coral/40 bg-coral/5 px-3 py-2 text-[12px] text-coral">
+                  {historyError}
+                </p>
+              )}
+              {historyLoading && historyTab !== "ask" && (
+                <div className="space-y-2 pt-2">
+                  {[70, 90, 60].map((w, i) => (
+                    <div key={i} className="h-2.5 animate-pulse rounded bg-line" style={{ width: `${w}%` }} />
+                  ))}
+                </div>
+              )}
+
+              {!historyLoading && historyTab === "recent" && (
+                recentNotes.length === 0 ? (
+                  <p className="pt-8 text-center text-[12.5px] text-mute">
+                    No notes yet. Structure a note to see it here.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {recentNotes.map((n) => (
+                      <NoteRow key={n.note_id} record={n} onClick={() => void loadNote(n.note_id)} />
+                    ))}
+                  </ul>
+                )
+              )}
+
+              {!historyLoading && historyTab === "search" && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void doSearch(); }}
+                      placeholder="Search notes…"
+                      className="flex-1 rounded-md border border-line bg-paper px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-teal"
+                    />
+                    <button
+                      onClick={() => void doSearch()}
+                      disabled={!searchQuery.trim()}
+                      className="btn-ghost h-8 shrink-0 rounded-md border border-line bg-white px-2.5 text-[12.5px] font-medium text-ink disabled:opacity-50"
+                    >
+                      Go
+                    </button>
+                  </div>
+                  {!historySearched && (
+                    <p className="pt-6 text-center text-[12.5px] text-mute">
+                      Enter a query to search your notes.
+                    </p>
+                  )}
+                  {historySearched && searchResults.length === 0 && (
+                    <p className="pt-6 text-center text-[12.5px] text-mute">
+                      No matching notes found.
+                    </p>
+                  )}
+                  {searchResults.length > 0 && (
+                    <ul className="space-y-1.5">
+                      {searchResults.map((n) => (
+                        <NoteRow key={n.note_id} record={n} showScore onClick={() => void loadNote(n.note_id)} />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {historyTab === "ask" && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={askQuestion}
+                      onChange={(e) => setAskQuestion(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void doAsk(); }}
+                      placeholder="Ask your notes…"
+                      className="flex-1 rounded-md border border-line bg-paper px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-teal"
+                    />
+                    <button
+                      onClick={() => void doAsk()}
+                      disabled={askLoading || !askQuestion.trim()}
+                      className="btn-ghost h-8 shrink-0 rounded-md border border-line bg-white px-2.5 text-[12.5px] font-medium text-ink disabled:opacity-50"
+                    >
+                      {askLoading ? "…" : "Ask"}
+                    </button>
+                  </div>
+
+                  {!askResult && !askLoading && (
+                    <p className="pt-6 text-center text-[12.5px] text-mute">
+                      Ask a question about your stored notes.
+                    </p>
+                  )}
+
+                  {askLoading && (
+                    <div className="space-y-2 pt-2">
+                      {[80, 60, 90].map((w, i) => (
+                        <div key={i} className="h-2.5 animate-pulse rounded bg-line"
+                          style={{ width: `${w}%` }} />
+                      ))}
+                    </div>
+                  )}
+
+                  {askResult && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide ${
+                          askResult.grounded
+                            ? "bg-teal/10 text-teal"
+                            : "bg-coral/10 text-coral"
+                        }`}>
+                          {askResult.grounded ? "Grounded" : "Unverified"}
+                        </span>
+                        {askResult.rewritten && (
+                          <span className="text-[10.5px] text-mute">Query rewritten</span>
+                        )}
+                      </div>
+
+                      <p className="rounded-md border border-line bg-paper px-3 py-2.5 text-[13px] leading-[1.6] text-ink">
+                        {askResult.answer}
+                      </p>
+
+                      {askResult.sources.length > 0 && (
+                        <div>
+                          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-mute">
+                            Sources
+                          </p>
+                          <ul className="space-y-1.5">
+                            {askResult.sources.map((s) => (
+                              <NoteRow
+                                key={s.note_id}
+                                record={s}
+                                onClick={() => void loadNote(s.note_id)}
+                              />
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
         </div>
       </main>
     </div>
+  );
+}
+
+function NoteRow({
+  record,
+  showScore = false,
+  onClick,
+}: {
+  record: NoteRecord;
+  showScore?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className="w-full rounded-md border border-line bg-paper p-2.5 text-left transition-colors hover:border-teal hover:bg-white"
+      >
+        <p className="truncate text-[13px] font-medium leading-tight text-ink">
+          {record.chief_complaint}
+        </p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="text-[11.5px] text-mute">
+            {new Date(record.created_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </p>
+          {showScore && record.score != null && (
+            <span className="rounded bg-teal/10 px-1.5 py-0.5 text-[10.5px] font-medium text-teal">
+              {(record.score * 100).toFixed(0)}%
+            </span>
+          )}
+        </div>
+      </button>
+    </li>
   );
 }
 

@@ -22,3 +22,29 @@ export interface SOAPNote {
   follow_up: string | null;
   flags_for_review: string[];
 }
+
+export interface NoteRecord {
+  note_id: string;
+  created_at: string;
+  chief_complaint: string;
+  score: number | null;
+}
+
+export interface SearchResponse {
+  results: NoteRecord[];
+  total: number;
+}
+
+export interface NoteDetail {
+  note_id: string;
+  created_at: string;
+  raw_text_length: number;
+  note: SOAPNote;
+}
+
+export interface AskResponse {
+  answer: string;
+  sources: NoteRecord[];
+  grounded: boolean;
+  rewritten: boolean;
+}
