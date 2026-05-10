@@ -34,6 +34,7 @@ export default function AppPage() {
   const [askQuestion, setAskQuestion] = useState("");
   const [askResult, setAskResult] = useState<AskResponse | null>(null);
   const [askLoading, setAskLoading] = useState(false);
+  const [genTime, setGenTime] = useState<number | null>(null);
 
   useEffect(() => { void loadRecent(); }, []);
 
@@ -123,7 +124,7 @@ export default function AppPage() {
       }
       const data = (await res.json()) as SOAPNote;
       setNote(data);
-      console.log(`structured in ${Math.round(performance.now() - started)}ms`);
+      setGenTime(Math.round((performance.now() - started) / 100) / 10);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Request failed";
       setError(msg);
@@ -138,6 +139,7 @@ export default function AppPage() {
     setError(null);
     setCopied(false);
     setIngestInfo(null);
+    setGenTime(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -281,6 +283,11 @@ export default function AppPage() {
                 )}
               </button>
             </div>
+            {genTime !== null && !loading && (
+              <p className="mt-2 text-right text-[11.5px] text-mute">
+                Generated in {genTime}s
+              </p>
+            )}
             {error && (
               <div className="mt-4 rounded-md border border-coral/40 bg-coral/5 px-3 py-2 text-[13px] text-ink">
                 <span className="font-medium text-coral">Error.</span> {error}
@@ -425,7 +432,7 @@ export default function AppPage() {
                       value={askQuestion}
                       onChange={(e) => setAskQuestion(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") void doAsk(); }}
-                      placeholder="Ask your notes…"
+                      placeholder="e.g. which patients were on sertraline?"
                       className="flex-1 rounded-md border border-line bg-paper px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-teal"
                     />
                     <button
@@ -438,9 +445,15 @@ export default function AppPage() {
                   </div>
 
                   {!askResult && !askLoading && (
-                    <p className="pt-6 text-center text-[12.5px] text-mute">
-                      Ask a question about your stored notes.
-                    </p>
+                    <div className="pt-4 text-center">
+                      <p className="text-[12.5px] text-mute">
+                        Ask anything across all stored notes.
+                      </p>
+                      <p className="mt-2 text-[11.5px] text-mute/70">
+                        Try: "which patients were on sertraline?" or
+                        "who had mood episodes with insomnia?"
+                      </p>
+                    </div>
                   )}
 
                   {askLoading && (
