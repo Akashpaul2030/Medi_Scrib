@@ -44,8 +44,17 @@ uvicorn_out.txt
 uvicorn_err.txt
 note.md
 
-# Screenshots
+# Screenshots and images
 scribe*.png
+Screenshot_*.png
+*.png
+*.jpg
+*.jpeg
+
+# Scratch / output files
+frontend_out.txt
+gemini json/
+test_gemini.py
 
 # Dataset files (MTSamples content — not source code)
 Dataset/

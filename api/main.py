@@ -1,7 +1,9 @@
+import os
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import assemblyai as aai
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -97,6 +99,48 @@ async def ingest(file: UploadFile = File(...)) -> IngestResponse:
         source_format=parsed.source_format,
         char_count=len(parsed.markdown),
     )
+
+
+MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB
+ALLOWED_AUDIO_SUFFIXES = {".webm", ".mp4", ".mp3", ".wav", ".m4a", ".ogg"}
+
+
+@app.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)) -> dict[str, str]:
+    aai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY", "")
+    if not aai.settings.api_key:
+        raise HTTPException(status_code=500, detail="ASSEMBLYAI_API_KEY not set")
+
+    blob = await audio.read()
+    if len(blob) == 0:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    if len(blob) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio too large (limit 25 MB)")
+
+    suffix = Path(audio.filename or "audio.webm").suffix.lower() or ".webm"
+    if suffix not in ALLOWED_AUDIO_SUFFIXES:
+        suffix = ".webm"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(blob)
+        tmp_path = Path(tmp.name)
+
+    config = aai.TranscriptionConfig(
+        speech_models=["universal-3-pro", "universal-2"],
+        language_detection=True,  # safe for real speech; AssemblyAI errors on silent audio
+    )
+    try:
+        transcript = aai.Transcriber().transcribe(str(tmp_path), config)
+        if transcript.status == aai.TranscriptStatus.error:
+            raise HTTPException(status_code=502, detail=f"Transcription error: {transcript.error}")
+        return {"text": transcript.text or ""}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Transcription failed")
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 @app.post("/search", response_model=SearchResponse)

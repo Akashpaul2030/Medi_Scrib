@@ -17,3 +17,4 @@ onnxruntime==1.19.2
 langgraph==0.2.74
 langchain-core==0.3.59
 langchain-openai==0.3.16
+assemblyai==0.64.0

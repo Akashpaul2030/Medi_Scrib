@@ -22,6 +22,14 @@ export default function AppPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLElement>(null);
 
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
   const [historyOpen, setHistoryOpen] = useState(true);
   const [historyTab, setHistoryTab] = useState<"recent" | "search" | "ask">("recent");
   const [recentNotes, setRecentNotes] = useState<NoteRecord[]>([]);
@@ -172,6 +180,79 @@ export default function AppPage() {
     }
   }
 
+  function drawBars() {
+    const canvas = canvasRef.current;
+    const analyser = analyserRef.current;
+    if (!canvas || !analyser) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+    const { width, height } = canvas;
+    ctx.clearRect(0, 0, width, height);
+    const barW = width / bufferLength;
+    for (let i = 0; i < bufferLength; i++) {
+      const barH = (dataArray[i] / 255) * height;
+      ctx.fillStyle = "#14b8a6";
+      ctx.fillRect(i * barW, height - barH, Math.max(barW - 1, 1), barH);
+    }
+    animFrameRef.current = requestAnimationFrame(drawBars);
+  }
+
+  function stopVisualizer() {
+    if (animFrameRef.current !== null) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    void audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      stopVisualizer();
+      mediaRecorderRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    analyserRef.current = analyser;
+    audioCtxRef.current = audioCtx;
+    drawBars();
+
+    const mr = new MediaRecorder(stream);
+    chunksRef.current = [];
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const fd = new FormData();
+      fd.append("audio", blob, "recording.webm");
+      setIngesting(true);
+      setError(null);
+      try {
+        const res = await fetch(`${API_URL}/transcribe`, { method: "POST", body: fd });
+        if (!res.ok) throw new Error(`Transcribe ${res.status}`);
+        const data = (await res.json()) as { text: string };
+        setText(data.text);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Transcription failed");
+      } finally {
+        setIngesting(false);
+      }
+    };
+    mediaRecorderRef.current = mr;
+    mr.start();
+    setRecording(true);
+  }
+
   async function copyMarkdown() {
     if (!note) return;
     await navigator.clipboard.writeText(soapToMarkdown(note));
@@ -242,12 +323,20 @@ export default function AppPage() {
                   }}
                 />
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => void toggleRecording()}
                   disabled={ingesting}
+                  className={`text-[12.5px] hover:underline disabled:opacity-50 ${recording ? "font-semibold text-coral" : "text-teal"}`}
+                  type="button"
+                >
+                  {recording ? "● Stop recording" : "🎤 Record"}
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={ingesting || recording}
                   className="text-[12.5px] text-teal hover:underline disabled:opacity-50"
                   type="button"
                 >
-                  {ingesting ? "Parsing…" : "Upload file"}
+                  {ingesting ? "Transcribing…" : "Upload file"}
                 </button>
                 <button
                   onClick={() => setText(SAMPLE)}
@@ -261,6 +350,13 @@ export default function AppPage() {
             {ingestInfo && (
               <p className="mb-2 text-[12px] text-mute">Loaded: {ingestInfo}</p>
             )}
+            <canvas
+              ref={canvasRef}
+              width={800}
+              height={40}
+              className={`w-full rounded-md bg-paper ${recording ? "mb-2 block" : "hidden"}`}
+              style={{ height: "40px" }}
+            />
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
