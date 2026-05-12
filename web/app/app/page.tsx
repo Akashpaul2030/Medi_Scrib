@@ -141,6 +141,9 @@ export default function AppPage() {
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as NoteDetail;
       setNote(data.note);
+      setCurrentNoteId(note_id);
+      setPatientLabel("");
+      setPatientLabelSaved(false);
       outputRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (e: unknown) {
       setHistoryError(e instanceof Error ? e.message : "Failed to load note");
