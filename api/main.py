@@ -6,10 +6,12 @@ from pathlib import Path
 import assemblyai as aai
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
 from api.ingest import parse_to_markdown
+from api.pdf_export import soap_to_pdf
 from api.rag_graph import run_ask
 from api.schemas import AskRequest, AskResponse, NoteDetail, NoteRecord, SOAPNote, SearchRequest, SearchResponse
 from api.structure import to_soap
@@ -226,3 +228,22 @@ def ask(req: AskRequest) -> AskResponse:
     except Exception as e:
         logger.exception("Ask failed")
         raise HTTPException(status_code=502, detail=f"Ask failed: {e}")
+
+
+class PdfExportRequest(BaseModel):
+    note: SOAPNote
+    created_at: str | None = None
+
+
+@app.post("/export/pdf")
+def export_pdf(req: PdfExportRequest) -> Response:
+    try:
+        pdf_bytes = soap_to_pdf(req.note, req.created_at)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=soap-note.pdf"},
+        )
+    except Exception as e:
+        logger.exception("PDF export failed")
+        raise HTTPException(status_code=502, detail=f"PDF export failed: {e}")

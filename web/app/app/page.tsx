@@ -273,6 +273,27 @@ export default function AppPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadPdf() {
+    if (!note) return;
+    try {
+      const res = await fetch(`${API_URL}/export/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note, created_at: new Date().toISOString() }),
+      });
+      if (!res.ok) throw new Error(`PDF export ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `soap-note-${Date.now()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "PDF export failed");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-paper">
       <Nav />
@@ -409,6 +430,12 @@ export default function AppPage() {
                     className="btn-ghost h-8 rounded-md border border-line bg-white px-2.5 text-[12.5px] font-medium text-ink"
                   >
                     Download JSON
+                  </button>
+                  <button
+                    onClick={() => void downloadPdf()}
+                    className="btn-ghost h-8 rounded-md border border-line bg-white px-2.5 text-[12.5px] font-medium text-ink"
+                  >
+                    Download PDF
                   </button>
                 </div>
               )}
