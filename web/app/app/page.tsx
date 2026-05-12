@@ -342,7 +342,10 @@ export default function AppPage() {
   }
 
   async function doCompare(histNote: NoteRecord) {
-    if (!note) return;
+    if (!note) {
+      setCompareResult("Open a note in the editor first, then click vs.");
+      return;
+    }
     setCompareLoading(true);
     setCompareResult(null);
     try {
@@ -861,17 +864,15 @@ export default function AppPage() {
                           </div>
                           <button
                             onClick={() => void doCompare(n)}
-                            disabled={!note || compareLoading || n.note_id === currentNoteId}
+                            disabled={compareLoading || n.note_id === currentNoteId}
                             title={
                               n.note_id === currentNoteId
                                 ? "This is the note currently loaded"
-                                : note
-                                ? "Compare with current note"
-                                : "Load a note first"
+                                : "Compare with current note"
                             }
                             className="shrink-0 self-stretch rounded-md border border-line bg-white px-2 text-[11px] font-medium text-teal hover:border-teal disabled:opacity-40"
                           >
-                            {compareLoading ? "…" : "vs"}
+                            {compareLoading ? "…" : n.note_id === currentNoteId ? "—" : !note ? "load→vs" : "vs"}
                           </button>
                         </div>
                       ))}
