@@ -861,8 +861,14 @@ export default function AppPage() {
                           </div>
                           <button
                             onClick={() => void doCompare(n)}
-                            disabled={!note || compareLoading}
-                            title={note ? "Compare with current note" : "Load a note first"}
+                            disabled={!note || compareLoading || n.note_id === currentNoteId}
+                            title={
+                              n.note_id === currentNoteId
+                                ? "This is the note currently loaded"
+                                : note
+                                ? "Compare with current note"
+                                : "Load a note first"
+                            }
                             className="shrink-0 self-stretch rounded-md border border-line bg-white px-2 text-[11px] font-medium text-teal hover:border-teal disabled:opacity-40"
                           >
                             {compareLoading ? "…" : "vs"}
