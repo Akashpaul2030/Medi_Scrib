@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import assemblyai as aai
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from loguru import logger
@@ -16,6 +16,10 @@ from api.rag_graph import run_ask
 from api.schemas import AskRequest, AskResponse, NoteDetail, NoteRecord, SOAPNote, SearchRequest, SearchResponse
 from api.structure import to_soap
 from api.vector_store import ensure_collection, list_notes, retrieve_note, save_note, search_notes
+
+def get_user_id(x_user_id: str = Header("anonymous", alias="X-User-Id")) -> str:
+    return x_user_id or "anonymous"
+
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 ALLOWED_SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".htm", ".md", ".txt"}
@@ -48,10 +52,11 @@ def health() -> dict[str, str]:
 
 
 @app.post("/structure", response_model=SOAPNote)
-def structure(req: StructureRequest, background_tasks: BackgroundTasks) -> SOAPNote:
+def structure(req: StructureRequest, background_tasks: BackgroundTasks,
+              user_id: str = Depends(get_user_id)) -> SOAPNote:
     try:
         note = to_soap(req.text)
-        background_tasks.add_task(save_note, note, req.text)
+        background_tasks.add_task(save_note, note, req.text, user_id)
         return note
     except Exception as e:
         logger.exception("Structuring failed")
@@ -146,9 +151,9 @@ async def transcribe(audio: UploadFile = File(...)) -> dict[str, str]:
 
 
 @app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest) -> SearchResponse:
+def search(req: SearchRequest, user_id: str = Depends(get_user_id)) -> SearchResponse:
     try:
-        hits = search_notes(req.query, req.limit)
+        hits = search_notes(req.query, user_id=user_id, limit=req.limit)
         records = [
             NoteRecord(
                 note_id=h["note_id"],
@@ -165,9 +170,9 @@ def search(req: SearchRequest) -> SearchResponse:
 
 
 @app.get("/notes", response_model=SearchResponse)
-def notes() -> SearchResponse:
+def notes(user_id: str = Depends(get_user_id)) -> SearchResponse:
     try:
-        items = list_notes(limit=20)
+        items = list_notes(user_id=user_id, limit=20)
         records = [
             NoteRecord(
                 note_id=i["note_id"],
@@ -183,9 +188,9 @@ def notes() -> SearchResponse:
 
 
 @app.get("/notes/{note_id}", response_model=NoteDetail)
-def get_note(note_id: str) -> NoteDetail:
+def get_note(note_id: str, user_id: str = Depends(get_user_id)) -> NoteDetail:
     try:
-        payload = retrieve_note(note_id)
+        payload = retrieve_note(note_id, user_id=user_id)
         if payload is None:
             raise HTTPException(status_code=404, detail="Note not found")
         return NoteDetail(
@@ -208,9 +213,9 @@ def get_note(note_id: str) -> NoteDetail:
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest) -> AskResponse:
+def ask(req: AskRequest, user_id: str = Depends(get_user_id)) -> AskResponse:
     try:
-        result = run_ask(req.question)
+        result = run_ask(req.question, user_id=user_id)
         sources = [
             NoteRecord(
                 note_id=s["note_id"],

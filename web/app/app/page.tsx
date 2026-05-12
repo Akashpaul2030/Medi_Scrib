@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { soapToMarkdown } from "@/lib/markdown";
 import type { AskResponse, Diagnosis, Medication, NoteDetail, NoteRecord, SOAPNote } from "@/lib/types";
@@ -12,6 +14,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SAMPLE = `Follow-up visit, 34-year-old female with recurrent major depressive disorder and generalized anxiety. Patient reports mood is improved on sertraline 100 mg daily over the last six weeks, sleep better, appetite returning. Still some morning anxiety, denies suicidal ideation, no homicidal ideation, no psychotic symptoms. Mental status: alert, cooperative, mood euthymic, affect congruent, no SI/HI. Continue sertraline 100 mg daily, add hydroxyzine 25 mg PO at bedtime as needed for anxiety. Follow up in 6 weeks.`;
 
 export default function AppPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const userId = session?.user?.id ?? "anonymous";
+
+  useEffect(() => {
+    if (status === "unauthenticated") router.push("/login");
+  }, [status, router]);
+
+  function authHeaders(): Record<string, string> {
+    return { "X-User-Id": userId };
+  }
+
   const [text, setText] = useState("");
   const [note, setNote] = useState<SOAPNote | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,13 +58,15 @@ export default function AppPage() {
   const [askLoading, setAskLoading] = useState(false);
   const [genTime, setGenTime] = useState<number | null>(null);
 
-  useEffect(() => { void loadRecent(); }, []);
+  useEffect(() => {
+    if (status === "authenticated") void loadRecent();
+  }, [status]);
 
   async function loadRecent() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch(`${API_URL}/notes`);
+      const res = await fetch(`${API_URL}/notes`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as { results: NoteRecord[]; total: number };
       setRecentNotes(data.results);
@@ -69,7 +85,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`${API_URL}/search`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ query: searchQuery, limit: 10 }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -90,7 +106,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`${API_URL}/ask`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ question: askQuestion }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -105,7 +121,7 @@ export default function AppPage() {
 
   async function loadNote(note_id: string) {
     try {
-      const res = await fetch(`${API_URL}/notes/${note_id}`);
+      const res = await fetch(`${API_URL}/notes/${note_id}`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as NoteDetail;
       setNote(data.note);
@@ -123,7 +139,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`${API_URL}/structure`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {
@@ -158,7 +174,7 @@ export default function AppPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_URL}/ingest`, { method: "POST", body: fd });
+      const res = await fetch(`${API_URL}/ingest`, { method: "POST", headers: authHeaders(), body: fd });
       if (!res.ok) {
         const detail = await res.text().catch(() => res.statusText);
         throw new Error(`Ingest ${res.status}: ${detail.slice(0, 200)}`);
@@ -238,7 +254,7 @@ export default function AppPage() {
       setIngesting(true);
       setError(null);
       try {
-        const res = await fetch(`${API_URL}/transcribe`, { method: "POST", body: fd });
+        const res = await fetch(`${API_URL}/transcribe`, { method: "POST", headers: authHeaders(), body: fd });
         if (!res.ok) throw new Error(`Transcribe ${res.status}`);
         const data = (await res.json()) as { text: string };
         setText(data.text);
@@ -278,7 +294,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`${API_URL}/export/pdf`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ note, created_at: new Date().toISOString() }),
       });
       if (!res.ok) throw new Error(`PDF export ${res.status}`);
@@ -292,6 +308,14 @@ export default function AppPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "PDF export failed");
     }
+  }
+
+  if (status === "loading" || status === "unauthenticated") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper">
+        <p className="text-[14px] text-mute">Loading…</p>
+      </div>
+    );
   }
 
   return (
@@ -309,6 +333,13 @@ export default function AppPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <span className="text-[12px] text-mute">{session?.user?.email}</span>
+            <button
+              onClick={() => void signOut({ callbackUrl: "/login" })}
+              className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"
+            >
+              Sign out
+            </button>
             <button
               onClick={() => setHistoryOpen(!historyOpen)}
               className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"

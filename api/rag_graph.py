@@ -20,6 +20,7 @@ llm = ChatOpenAI(
 
 class GraphState(TypedDict):
     question: str
+    user_id: str
     documents: list[dict]
     generation: str | None
     grounded: bool
@@ -45,7 +46,7 @@ def _parse_score(text: str, default: str) -> str:
 
 
 def retrieve(state: GraphState) -> dict:
-    results = search_notes(state["question"], limit=5)
+    results = search_notes(state["question"], user_id=state["user_id"], limit=5)
     return {"documents": results}
 
 
@@ -214,10 +215,11 @@ def build_graph() -> StateGraph:
 ask_graph = build_graph().compile()
 
 
-def run_ask(question: str) -> dict:
+def run_ask(question: str, user_id: str = "anonymous") -> dict:
     return ask_graph.invoke(
         {
             "question": question,
+            "user_id": user_id,
             "documents": [],
             "generation": None,
             "grounded": False,

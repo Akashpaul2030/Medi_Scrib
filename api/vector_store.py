@@ -4,7 +4,14 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PayloadSchemaType,
+    VectorParams,
+)
 
 from api.schemas import SOAPNote
 
@@ -39,9 +46,18 @@ def ensure_collection() -> None:
             collection_name=_COLLECTION,
             vectors_config={_VECTOR_NAME: VectorParams(size=_DIMS, distance=Distance.COSINE)},
         )
+    _client.create_payload_index(
+        collection_name=_COLLECTION,
+        field_name="user_id",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
 
 
-def save_note(note: SOAPNote, raw_text: str) -> str:
+def _user_filter(user_id: str) -> Filter:
+    return Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])
+
+
+def save_note(note: SOAPNote, raw_text: str, user_id: str = "anonymous") -> str:
     note_id = str(uuid.uuid4())
     embed_text = (
         note.chief_complaint
@@ -58,6 +74,7 @@ def save_note(note: SOAPNote, raw_text: str) -> str:
         documents=[embed_text],
         metadata=[
             {
+                "user_id": user_id,
                 "note_id": note_id,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "raw_text_length": len(raw_text),
@@ -65,7 +82,7 @@ def save_note(note: SOAPNote, raw_text: str) -> str:
                 "subjective": note.subjective,
                 "objective": note.objective,
                 "assessment": [
-                    {"description": d.description, "status": d.status.value}
+                    {"description": d.description, "icd10_code": d.icd10_code, "status": d.status.value}
                     for d in note.assessment
                 ],
                 "plan": note.plan,
@@ -87,10 +104,11 @@ def save_note(note: SOAPNote, raw_text: str) -> str:
     return note_id
 
 
-def search_notes(query: str, limit: int = 5) -> list[dict]:
+def search_notes(query: str, user_id: str = "anonymous", limit: int = 5) -> list[dict]:
     hits = _client.query(
         collection_name=_COLLECTION,
         query_text=query,
+        query_filter=_user_filter(user_id),
         limit=limit,
     )
     results = []
@@ -101,9 +119,10 @@ def search_notes(query: str, limit: int = 5) -> list[dict]:
     return results
 
 
-def list_notes(limit: int = 20) -> list[dict]:
+def list_notes(user_id: str = "anonymous", limit: int = 20) -> list[dict]:
     records, _ = _client.scroll(
         collection_name=_COLLECTION,
+        scroll_filter=_user_filter(user_id),
         limit=limit,
         with_payload=True,
         with_vectors=False,
@@ -113,7 +132,7 @@ def list_notes(limit: int = 20) -> list[dict]:
     return payloads
 
 
-def retrieve_note(note_id: str) -> dict | None:
+def retrieve_note(note_id: str, user_id: str = "anonymous") -> dict | None:
     results = _client.retrieve(
         collection_name=_COLLECTION,
         ids=[note_id],
@@ -122,4 +141,7 @@ def retrieve_note(note_id: str) -> dict | None:
     )
     if not results:
         return None
-    return dict(results[0].payload)
+    payload = dict(results[0].payload)
+    if payload.get("user_id", "anonymous") != user_id:
+        return None
+    return payload
