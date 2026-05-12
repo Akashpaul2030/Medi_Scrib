@@ -57,8 +57,17 @@ def grade_documents(state: GraphState) -> dict:
 
     relevant = []
     for doc in documents:
-        chief_complaint = doc.get("chief_complaint", "")
-        subjective = doc.get("subjective", "")
+        assessments = doc.get("assessment", [])
+        diag_text = "; ".join(
+            (a.get("description", "") if isinstance(a, dict) else str(a))
+            for a in assessments
+        ) if isinstance(assessments, list) else ""
+        note_summary = (
+            f"Chief complaint: {doc.get('chief_complaint', '')}\n"
+            f"Subjective: {doc.get('subjective', '')[:400]}\n"
+            f"Assessment: {diag_text}\n"
+            f"Plan: {doc.get('plan', '')[:300]}"
+        )
         messages = [
             {
                 "role": "system",
@@ -74,7 +83,7 @@ def grade_documents(state: GraphState) -> dict:
                 "role": "user",
                 "content": (
                     f"Question: {state['question']}\n\n"
-                    f"Note: {chief_complaint}. {subjective[:300]}"
+                    f"Note:\n{note_summary}"
                 ),
             },
         ]
@@ -115,22 +124,39 @@ def rewrite_query(state: GraphState) -> dict:
     }
 
 
+def _fmt_doc(doc: dict) -> str:
+    assessments = doc.get("assessment", [])
+    diag_text = "; ".join(
+        (f"{a.get('description', '')} ({a.get('icd10_code', '')})" if isinstance(a, dict) else str(a))
+        for a in assessments
+    ) if isinstance(assessments, list) else ""
+    meds = doc.get("medications_prescribed", [])
+    med_text = "; ".join(
+        (f"{m.get('name', '')} {m.get('dose', '')} {m.get('route', '')} {m.get('frequency', '')}"
+         if isinstance(m, dict) else str(m))
+        for m in meds
+    ) if isinstance(meds, list) else ""
+    return (
+        f"Chief complaint: {doc.get('chief_complaint', '')}\n"
+        f"Subjective: {doc.get('subjective', '')}\n"
+        f"Objective: {doc.get('objective', '')}\n"
+        f"Assessment: {diag_text}\n"
+        f"Plan: {doc.get('plan', '')}\n"
+        f"Medications: {med_text}\n"
+        f"Follow-up: {doc.get('follow_up', '')}"
+    )
+
+
 def generate(state: GraphState) -> dict:
     documents = state["documents"]
     if not documents:
         return {
-            "generation": (
-                "Insufficient context in stored notes to answer this question."
-            ),
+            "generation": "Insufficient context in stored notes to answer this question.",
             "grounded": False,
             "sources": [],
         }
 
-    context = "\n".join(
-        f"Chief complaint: {doc.get('chief_complaint', '')}\n"
-        f"Plan: {doc.get('plan', '')}\n"
-        for doc in documents
-    )
+    context = "\n\n---\n\n".join(_fmt_doc(doc) for doc in documents)
     messages = [
         {
             "role": "system",
@@ -159,11 +185,7 @@ def grade_generation(state: GraphState) -> dict:
     if not documents:
         return {"grounded": False}
 
-    context = "\n".join(
-        f"Chief complaint: {doc.get('chief_complaint', '')}\n"
-        f"Plan: {doc.get('plan', '')}\n"
-        for doc in documents
-    )
+    context = "\n\n---\n\n".join(_fmt_doc(doc) for doc in documents)
     messages = [
         {
             "role": "system",
