@@ -455,7 +455,7 @@ export default function AppPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_300px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_340px]">
           <section className="rounded-xl border border-line bg-white p-5 shadow-softer">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-[13px] font-semibold uppercase tracking-wide text-mute">
@@ -600,42 +600,17 @@ export default function AppPage() {
           </section>
           <aside className={historyOpen ? "flex flex-col overflow-hidden rounded-xl border border-line bg-white shadow-softer" : "hidden"}>
             <div className="flex shrink-0 border-b border-line">
-              <button
-                onClick={() => setHistoryTab("recent")}
-                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                  historyTab === "recent" ? "-mb-px border-b-2 border-teal text-teal" : "text-mute hover:text-ink"
-                }`}
-              >
-                Recent
-              </button>
-              <button
-                onClick={() => setHistoryTab("search")}
-                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                  historyTab === "search" ? "-mb-px border-b-2 border-teal text-teal" : "text-mute hover:text-ink"
-                }`}
-              >
-                Search
-              </button>
-              <button
-                onClick={() => setHistoryTab("ask")}
-                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                  historyTab === "ask"
-                    ? "-mb-px border-b-2 border-teal text-teal"
-                    : "text-mute hover:text-ink"
-                }`}
-              >
-                Ask
-              </button>
-              <button
-                onClick={() => { setHistoryTab("patients"); setPatientView(null); }}
-                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                  historyTab === "patients"
-                    ? "-mb-px border-b-2 border-teal text-teal"
-                    : "text-mute hover:text-ink"
-                }`}
-              >
-                Patients
-              </button>
+              {(["recent", "search", "ask", "patients"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => { setHistoryTab(tab); if (tab === "patients") setPatientView(null); }}
+                  className={`flex-1 py-2 text-[11px] font-semibold uppercase transition-colors ${
+                    historyTab === tab ? "-mb-px border-b-2 border-teal text-teal" : "text-mute hover:text-ink"
+                  }`}
+                >
+                  {tab === "recent" ? "Recent" : tab === "search" ? "Search" : tab === "ask" ? "Ask" : "Patients"}
+                </button>
+              ))}
             </div>
 
             <div className="flex-1 overflow-y-auto p-3">
