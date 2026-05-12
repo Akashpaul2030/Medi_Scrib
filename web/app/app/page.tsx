@@ -793,7 +793,7 @@ function DiagnosisList({
     onChange(items.filter((_, idx) => idx !== i));
   }
   function add() {
-    onChange([...items, { description: "", status: "active" }]);
+    onChange([...items, { description: "", icd10_code: null, status: "active" }]);
   }
 
   return (
@@ -822,6 +822,12 @@ function DiagnosisList({
               onChange={(e) => update(i, { description: e.target.value })}
               className="flex-1 rounded border border-transparent bg-transparent px-2 py-1 text-[14px] text-ink outline-none focus:border-teal"
               placeholder="Diagnosis"
+            />
+            <input
+              value={d.icd10_code ?? ""}
+              onChange={(e) => update(i, { icd10_code: e.target.value.trim() || null })}
+              className="w-[72px] rounded border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-mono text-mute outline-none focus:border-teal"
+              placeholder="ICD-10"
             />
             <select
               value={d.status}

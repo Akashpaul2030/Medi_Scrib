@@ -2,6 +2,7 @@ export type DiagnosisStatus = "active" | "resolved" | "ruled_out";
 
 export interface Diagnosis {
   description: string;
+  icd10_code: string | null;
   status: DiagnosisStatus;
 }
 

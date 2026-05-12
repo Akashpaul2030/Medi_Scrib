@@ -11,7 +11,14 @@ class DiagnosisStatus(str, Enum):
 
 class Diagnosis(BaseModel):
     description: str = Field(
-        description="Diagnosis or problem stated by the clinician, e.g. 'Recurrent major depressive disorder'. Use clinical phrasing from the dictation; do not invent ICD-10 codes."
+        description="Diagnosis or problem stated by the clinician, e.g. 'Recurrent major depressive disorder'. Use clinical phrasing from the dictation; do not invent diagnoses."
+    )
+    icd10_code: str | None = Field(
+        default=None,
+        description="ICD-10-CM code for this diagnosis if clearly identifiable from the description, "
+                    "e.g. 'F33.1' for recurrent MDD moderate, 'F41.1' for GAD, 'F31.81' for bipolar II, "
+                    "'F43.10' for PTSD, 'F90.2' for ADHD combined. Use None if the diagnosis is too vague "
+                    "to code confidently — do not guess."
     )
     status: DiagnosisStatus = Field(
         description="One of 'active' (currently being treated), 'resolved' (no longer present), or 'ruled_out' (considered and excluded). If unclear, default to 'active' and add an entry to flags_for_review."

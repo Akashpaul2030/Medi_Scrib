@@ -22,7 +22,7 @@ export function soapToMarkdown(note: SOAPNote): string {
     lines.push("—");
   } else {
     for (const dx of note.assessment) {
-      lines.push(`- ${dx.description} _(${dx.status})_`);
+      lines.push(`- ${dx.description}${dx.icd10_code ? ` (${dx.icd10_code})` : ""} _(${dx.status})_`);
     }
   }
   lines.push("");
