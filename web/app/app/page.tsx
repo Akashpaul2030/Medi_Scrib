@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { soapToMarkdown } from "@/lib/markdown";
-import type { AskResponse, Diagnosis, Medication, NoteDetail, NoteRecord, SOAPNote } from "@/lib/types";
+import type { AskResponse, CompareResponse, Diagnosis, Medication, NoteDetail, NoteRecord, PatientRecord, SOAPNote, StructureResponse } from "@/lib/types";
 
 const ALLOWED_TYPES = ".pdf,.docx,.pptx,.html,.htm,.md,.txt";
 
@@ -44,8 +44,19 @@ export default function AppPage() {
   const animFrameRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
+  const [patientLabel, setPatientLabel] = useState("");
+  const [patientLabelSaved, setPatientLabelSaved] = useState(false);
+  const [patients, setPatients] = useState<PatientRecord[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(false);
+  const [patientView, setPatientView] = useState<string | null>(null);
+  const [patientNotes, setPatientNotes] = useState<NoteRecord[]>([]);
+  const [patientNotesLoading, setPatientNotesLoading] = useState(false);
+  const [compareResult, setCompareResult] = useState<string | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+
   const [historyOpen, setHistoryOpen] = useState(true);
-  const [historyTab, setHistoryTab] = useState<"recent" | "search" | "ask">("recent");
+  const [historyTab, setHistoryTab] = useState<"recent" | "search" | "ask" | "patients">("recent");
   const [recentNotes, setRecentNotes] = useState<NoteRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NoteRecord[]>([]);
@@ -61,6 +72,11 @@ export default function AppPage() {
   useEffect(() => {
     if (status === "authenticated") void loadRecent();
   }, [status]);
+
+  useEffect(() => {
+    if (historyTab === "patients" && status === "authenticated") void loadPatients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyTab, status]);
 
   async function loadRecent() {
     setHistoryLoading(true);
@@ -146,8 +162,11 @@ export default function AppPage() {
         const detail = await res.text().catch(() => res.statusText);
         throw new Error(`API ${res.status}: ${detail.slice(0, 200)}`);
       }
-      const data = (await res.json()) as SOAPNote;
-      setNote(data);
+      const data = (await res.json()) as StructureResponse;
+      setNote(data.note);
+      setCurrentNoteId(data.note_id);
+      setPatientLabel("");
+      setPatientLabelSaved(false);
       setGenTime(Math.round((performance.now() - started) / 100) / 10);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Request failed";
@@ -164,6 +183,9 @@ export default function AppPage() {
     setCopied(false);
     setIngestInfo(null);
     setGenTime(null);
+    setCurrentNoteId(null);
+    setPatientLabel("");
+    setPatientLabelSaved(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -267,6 +289,76 @@ export default function AppPage() {
     mediaRecorderRef.current = mr;
     mr.start();
     setRecording(true);
+  }
+
+  async function assignLabel() {
+    if (!currentNoteId || !patientLabel.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/notes/${currentNoteId}/label`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ patient_label: patientLabel.trim() }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setPatientLabelSaved(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Label assignment failed");
+    }
+  }
+
+  async function loadPatients() {
+    setPatientsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/patients`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { patients: PatientRecord[] };
+      setPatients(data.patients);
+    } catch {
+      // silent — tab will show empty state
+    } finally {
+      setPatientsLoading(false);
+    }
+  }
+
+  async function loadPatientNotes(label: string) {
+    setPatientNotesLoading(true);
+    setCompareResult(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/patients/${encodeURIComponent(label)}/notes`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { results: NoteRecord[] };
+      setPatientNotes(data.results);
+    } catch {
+      setPatientNotes([]);
+    } finally {
+      setPatientNotesLoading(false);
+    }
+  }
+
+  async function doCompare(histNote: NoteRecord) {
+    if (!note) return;
+    setCompareLoading(true);
+    setCompareResult(null);
+    try {
+      const res1 = await fetch(`${API_URL}/notes/${histNote.note_id}`, { headers: authHeaders() });
+      if (!res1.ok) throw new Error(`API ${res1.status}`);
+      const detail = (await res1.json()) as NoteDetail;
+      const res2 = await fetch(`${API_URL}/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ note_a: detail.note, note_b: note }),
+      });
+      if (!res2.ok) throw new Error(`API ${res2.status}`);
+      const data = (await res2.json()) as CompareResponse;
+      setCompareResult(data.summary);
+    } catch (e: unknown) {
+      setCompareResult("Compare failed: " + (e instanceof Error ? e.message : "unknown"));
+    } finally {
+      setCompareLoading(false);
+    }
   }
 
   async function copyMarkdown() {
@@ -477,10 +569,27 @@ export default function AppPage() {
             )}
             {loading && !note && <LoadingState />}
             {note && (
-              <NoteEditor
-                note={note}
-                onChange={setNote}
-              />
+              <>
+                <NoteEditor note={note} onChange={setNote} />
+                <div className="mt-4 flex items-center gap-2 rounded-md border border-line bg-paper px-3 py-2">
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-mute">
+                    Patient
+                  </span>
+                  <input
+                    value={patientLabel}
+                    onChange={(e) => { setPatientLabel(e.target.value); setPatientLabelSaved(false); }}
+                    placeholder="e.g. Jane Doe or MR-00123"
+                    className="flex-1 rounded border border-transparent bg-transparent px-2 py-1 text-[13px] text-ink outline-none focus:border-teal"
+                  />
+                  <button
+                    onClick={() => void assignLabel()}
+                    disabled={!patientLabel.trim() || patientLabelSaved || !currentNoteId}
+                    className="btn-ghost h-7 shrink-0 rounded border border-line bg-white px-2.5 text-[12px] font-medium text-ink disabled:opacity-50"
+                  >
+                    {patientLabelSaved ? "Saved ✓" : "Assign"}
+                  </button>
+                </div>
+              </>
             )}
           </section>
           <aside className={historyOpen ? "flex flex-col overflow-hidden rounded-xl border border-line bg-white shadow-softer" : "hidden"}>
@@ -510,6 +619,16 @@ export default function AppPage() {
                 }`}
               >
                 Ask
+              </button>
+              <button
+                onClick={() => { setHistoryTab("patients"); setPatientView(null); }}
+                className={`flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                  historyTab === "patients"
+                    ? "-mb-px border-b-2 border-teal text-teal"
+                    : "text-mute hover:text-ink"
+                }`}
+              >
+                Patients
               </button>
             </div>
 
@@ -655,6 +774,99 @@ export default function AppPage() {
                         </div>
                       )}
                     </div>
+                  )}
+                </div>
+              )}
+
+
+              {historyTab === "patients" && (
+                <div className="space-y-2">
+                  {patientView === null ? (
+                    <>
+                      {patientsLoading && (
+                        <div className="space-y-2 pt-2">
+                          {[70, 90, 60].map((w, i) => (
+                            <div key={i} className="h-2.5 animate-pulse rounded bg-line" style={{ width: `${w}%` }} />
+                          ))}
+                        </div>
+                      )}
+                      {!patientsLoading && patients.length === 0 && (
+                        <p className="pt-8 text-center text-[12.5px] text-mute">
+                          No labeled patients yet. Assign a patient label after structuring a note.
+                        </p>
+                      )}
+                      {patients.map((p) => (
+                        <button
+                          key={p.patient_label}
+                          onClick={() => {
+                            setPatientView(p.patient_label);
+                            void loadPatientNotes(p.patient_label);
+                          }}
+                          className="w-full rounded-md border border-line bg-paper p-2.5 text-left transition-colors hover:border-teal hover:bg-white"
+                        >
+                          <p className="truncate text-[13px] font-medium text-ink">
+                            {p.patient_label}
+                          </p>
+                          <p className="mt-0.5 text-[11.5px] text-mute">
+                            {p.note_count} note{p.note_count !== 1 ? "s" : ""} · last{" "}
+                            {new Date(p.last_visit).toLocaleDateString("en-US", {
+                              month: "short", day: "numeric", year: "numeric",
+                            })}
+                          </p>
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { setPatientView(null); setCompareResult(null); }}
+                          className="text-[12px] text-teal hover:underline"
+                        >
+                          ← Back
+                        </button>
+                        <span className="truncate text-[13px] font-medium text-ink">
+                          {patientView}
+                        </span>
+                      </div>
+
+                      {compareResult && (
+                        <div className="rounded-md border border-teal/30 bg-teal/5 p-3">
+                          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">
+                            Comparison
+                          </p>
+                          <p className="whitespace-pre-wrap text-[12.5px] leading-[1.6] text-ink">
+                            {compareResult}
+                          </p>
+                        </div>
+                      )}
+
+                      {patientNotesLoading && (
+                        <div className="space-y-2 pt-2">
+                          {[70, 90, 60].map((w, i) => (
+                            <div key={i} className="h-2.5 animate-pulse rounded bg-line" style={{ width: `${w}%` }} />
+                          ))}
+                        </div>
+                      )}
+                      {!patientNotesLoading && patientNotes.length === 0 && (
+                        <p className="pt-4 text-center text-[12.5px] text-mute">No notes.</p>
+                      )}
+                      {patientNotes.map((n) => (
+                        <div key={n.note_id} className="flex items-stretch gap-1">
+                          <div className="min-w-0 flex-1">
+                            <NoteRow record={n} onClick={() => void loadNote(n.note_id)} />
+                          </div>
+                          <button
+                            onClick={() => void doCompare(n)}
+                            disabled={!note || compareLoading}
+                            title={note ? "Compare with current note" : "Load a note first"}
+                            className="shrink-0 self-stretch rounded-md border border-line bg-white px-2 text-[11px] font-medium text-teal hover:border-teal disabled:opacity-40"
+                          >
+                            {compareLoading ? "…" : "vs"}
+                          </button>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
               )}

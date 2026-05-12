@@ -100,3 +100,29 @@ class AskResponse(BaseModel):
     sources: list[NoteRecord]
     grounded: bool
     rewritten: bool
+
+
+class StructureResponse(BaseModel):
+    note: SOAPNote
+    note_id: str
+
+
+class PatientRecord(BaseModel):
+    patient_label: str
+    note_count: int
+    last_visit: str
+
+
+class PatientLabelRequest(BaseModel):
+    patient_label: str
+
+
+class CompareRequest(BaseModel):
+    note_a: SOAPNote
+    note_b: SOAPNote
+    label_a: str | None = None
+    label_b: str | None = None
+
+
+class CompareResponse(BaseModel):
+    summary: str

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,10 +13,17 @@ from pydantic import BaseModel, Field, ValidationError
 
 from api.ingest import parse_to_markdown
 from api.pdf_export import soap_to_pdf
-from api.rag_graph import run_ask
-from api.schemas import AskRequest, AskResponse, NoteDetail, NoteRecord, SOAPNote, SearchRequest, SearchResponse
+from api.rag_graph import run_ask, run_compare
+from api.schemas import (
+    AskRequest, AskResponse, CompareRequest, CompareResponse,
+    NoteDetail, NoteRecord, PatientLabelRequest, PatientRecord,
+    SOAPNote, SearchRequest, SearchResponse, StructureResponse,
+)
 from api.structure import to_soap
-from api.vector_store import ensure_collection, list_notes, retrieve_note, save_note, search_notes
+from api.vector_store import (
+    ensure_collection, list_notes, list_patient_notes, list_patients,
+    retrieve_note, save_note, search_notes, set_patient_label,
+)
 
 def get_user_id(x_user_id: str = Header("anonymous", alias="X-User-Id")) -> str:
     return x_user_id or "anonymous"
@@ -51,13 +59,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/structure", response_model=SOAPNote)
+@app.post("/structure", response_model=StructureResponse)
 def structure(req: StructureRequest, background_tasks: BackgroundTasks,
-              user_id: str = Depends(get_user_id)) -> SOAPNote:
+              user_id: str = Depends(get_user_id)) -> StructureResponse:
     try:
         note = to_soap(req.text)
-        background_tasks.add_task(save_note, note, req.text, user_id)
-        return note
+        note_id = str(uuid.uuid4())
+        background_tasks.add_task(save_note, note, req.text, user_id, note_id)
+        return StructureResponse(note=note, note_id=note_id)
     except Exception as e:
         logger.exception("Structuring failed")
         raise HTTPException(status_code=502, detail=f"Structuring failed: {e}")
@@ -233,6 +242,65 @@ def ask(req: AskRequest, user_id: str = Depends(get_user_id)) -> AskResponse:
     except Exception as e:
         logger.exception("Ask failed")
         raise HTTPException(status_code=502, detail=f"Ask failed: {e}")
+
+
+@app.patch("/notes/{note_id}/label")
+def label_note(note_id: str, req: PatientLabelRequest,
+               user_id: str = Depends(get_user_id)) -> dict:
+    try:
+        ok = set_patient_label(note_id, req.patient_label, user_id=user_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Note not found")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Label update failed")
+        raise HTTPException(status_code=502, detail=f"Label update failed: {e}")
+
+
+@app.get("/patients")
+def get_patients(user_id: str = Depends(get_user_id)) -> dict:
+    try:
+        items = list_patients(user_id=user_id)
+        records = [PatientRecord(**item) for item in items]
+        return {"patients": records, "total": len(records)}
+    except Exception as e:
+        logger.exception("Patients list failed")
+        raise HTTPException(status_code=502, detail=f"Patients list failed: {e}")
+
+
+@app.get("/patients/{label}/notes", response_model=SearchResponse)
+def get_patient_notes(label: str, user_id: str = Depends(get_user_id)) -> SearchResponse:
+    try:
+        items = list_patient_notes(label, user_id=user_id)
+        records = [
+            NoteRecord(
+                note_id=i["note_id"],
+                created_at=i["created_at"],
+                chief_complaint=i["chief_complaint"],
+            )
+            for i in items
+        ]
+        return SearchResponse(results=records, total=len(records))
+    except Exception as e:
+        logger.exception("Patient notes failed")
+        raise HTTPException(status_code=502, detail=f"Patient notes failed: {e}")
+
+
+@app.post("/compare", response_model=CompareResponse)
+def compare(req: CompareRequest, user_id: str = Depends(get_user_id)) -> CompareResponse:
+    try:
+        summary = run_compare(
+            req.note_a.model_dump(),
+            req.note_b.model_dump(),
+            req.label_a,
+            req.label_b,
+        )
+        return CompareResponse(summary=summary)
+    except Exception as e:
+        logger.exception("Compare failed")
+        raise HTTPException(status_code=502, detail=f"Compare failed: {e}")
 
 
 class PdfExportRequest(BaseModel):

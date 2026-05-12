@@ -227,3 +227,51 @@ def run_ask(question: str, user_id: str = "anonymous") -> dict:
             "sources": [],
         }
     )
+
+
+def run_compare(
+    note_a: dict,
+    note_b: dict,
+    label_a: str | None = None,
+    label_b: str | None = None,
+) -> str:
+    def fmt(n: dict, label: str | None) -> str:
+        label_line = f"Patient: {label}\n" if label else ""
+        assessments = n.get("assessment", [])
+        diag_text = "; ".join(
+            (a.get("description", "") if isinstance(a, dict) else str(a))
+            for a in assessments
+        ) if isinstance(assessments, list) else ""
+        meds = n.get("medications_prescribed", [])
+        med_text = ", ".join(
+            (m.get("name", "") if isinstance(m, dict) else str(m))
+            for m in meds
+        ) if isinstance(meds, list) else ""
+        return (
+            f"{label_line}"
+            f"Chief complaint: {n.get('chief_complaint', '')}\n"
+            f"Assessment: {diag_text}\n"
+            f"Plan: {n.get('plan', '')}\n"
+            f"Medications: {med_text}"
+        )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a clinical documentation assistant. Compare two SOAP notes for the same patient "
+                "and summarize the key clinical changes. Focus on diagnosis changes, medication adjustments, "
+                "symptom progression or improvement, and any new concerns. "
+                "Be concise — respond with 3-5 bullet points only."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Note A (earlier):\n{fmt(note_a, label_a)}\n\n"
+                f"Note B (later):\n{fmt(note_b, label_b)}"
+            ),
+        },
+    ]
+    response = llm.invoke(messages)
+    return response.content

@@ -49,3 +49,18 @@ export interface AskResponse {
   grounded: boolean;
   rewritten: boolean;
 }
+
+export interface StructureResponse {
+  note: SOAPNote;
+  note_id: string;
+}
+
+export interface PatientRecord {
+  patient_label: string;
+  note_count: number;
+  last_visit: string;
+}
+
+export interface CompareResponse {
+  summary: string;
+}

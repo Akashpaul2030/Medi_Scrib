@@ -51,14 +51,26 @@ def ensure_collection() -> None:
         field_name="user_id",
         field_schema=PayloadSchemaType.KEYWORD,
     )
+    _client.create_payload_index(
+        collection_name=_COLLECTION,
+        field_name="patient_label",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
 
 
 def _user_filter(user_id: str) -> Filter:
     return Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])
 
 
-def save_note(note: SOAPNote, raw_text: str, user_id: str = "anonymous") -> str:
-    note_id = str(uuid.uuid4())
+def save_note(
+    note: SOAPNote,
+    raw_text: str,
+    user_id: str = "anonymous",
+    note_id: str | None = None,
+    patient_label: str | None = None,
+) -> str:
+    if note_id is None:
+        note_id = str(uuid.uuid4())
     embed_text = (
         note.chief_complaint
         + " "
@@ -97,6 +109,7 @@ def save_note(note: SOAPNote, raw_text: str, user_id: str = "anonymous") -> str:
                 ],
                 "follow_up": note.follow_up,
                 "flags_for_review": note.flags_for_review,
+                "patient_label": patient_label,
             }
         ],
         ids=[note_id],
@@ -145,3 +158,64 @@ def retrieve_note(note_id: str, user_id: str = "anonymous") -> dict | None:
     if payload.get("user_id", "anonymous") != user_id:
         return None
     return payload
+
+
+def set_patient_label(note_id: str, patient_label: str, user_id: str = "anonymous") -> bool:
+    results = _client.retrieve(
+        collection_name=_COLLECTION,
+        ids=[note_id],
+        with_payload=True,
+        with_vectors=False,
+    )
+    if not results:
+        return False
+    if results[0].payload.get("user_id") != user_id:
+        return False
+    _client.set_payload(
+        collection_name=_COLLECTION,
+        payload={"patient_label": patient_label},
+        points=[note_id],
+    )
+    return True
+
+
+def list_patients(user_id: str = "anonymous") -> list[dict]:
+    records, _ = _client.scroll(
+        collection_name=_COLLECTION,
+        scroll_filter=_user_filter(user_id),
+        limit=1000,
+        with_payload=True,
+        with_vectors=False,
+    )
+    patients: dict[str, dict] = {}
+    for r in records:
+        label = r.payload.get("patient_label")
+        if not label:
+            continue
+        if label not in patients:
+            patients[label] = {"note_count": 0, "last_visit": ""}
+        patients[label]["note_count"] += 1
+        created = r.payload.get("created_at", "")
+        if created > patients[label]["last_visit"]:
+            patients[label]["last_visit"] = created
+    return sorted(
+        [{"patient_label": k, **v} for k, v in patients.items()],
+        key=lambda x: x["last_visit"],
+        reverse=True,
+    )
+
+
+def list_patient_notes(patient_label: str, user_id: str = "anonymous") -> list[dict]:
+    records, _ = _client.scroll(
+        collection_name=_COLLECTION,
+        scroll_filter=Filter(must=[
+            FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+            FieldCondition(key="patient_label", match=MatchValue(value=patient_label)),
+        ]),
+        limit=50,
+        with_payload=True,
+        with_vectors=False,
+    )
+    payloads = [dict(r.payload) for r in records]
+    payloads.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    return payloads
