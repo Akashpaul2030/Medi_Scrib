@@ -17,7 +17,7 @@ export function Hero() {
           <div className="max-w-[560px]">
             <div className="inline-flex items-center gap-2 rounded-full border border-line bg-white/70 px-3 py-1 text-[12px] text-mute backdrop-blur">
               <Lock size={13} stroke={1.7} className="text-teal" />
-              HIPAA-aligned · BAA available
+              Built only for outpatient psychiatry
             </div>
             <h1 className="font-display mt-6 text-[44px] font-medium leading-[1.04] text-ink sm:text-[52px] lg:text-[60px]">
               Stop typing notes.
@@ -25,8 +25,10 @@ export function Hero() {
               <span className="text-teal">Start seeing patients.</span>
             </h1>
             <p className="mt-6 max-w-[500px] text-[17px] leading-[1.55] text-ink/70">
-              ScribeAI turns your 30-second dictation into a complete SOAP note
-              in under 15 seconds — structured, editable, and ready to sign.
+              ScribeAI turns a rambling psychiatry dictation — typed, uploaded,
+              or spoken — into a structured SOAP note in about 15 seconds. It
+              never invents a dose or diagnosis: anything ambiguous is flagged
+              for you to verify.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <a
@@ -37,15 +39,16 @@ export function Hero() {
                 <ArrowRight size={16} stroke={2} />
               </a>
               <a
-                href="#"
+                href="#how"
                 className="btn-ghost inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-[14.5px] font-medium text-ink"
               >
                 <Play size={11} className="text-teal" />
-                See a 30s demo
+                See how it works
               </a>
             </div>
             <p className="mt-4 text-[12.5px] text-mute">
-              No credit card. 14-day pilot, then $99/month.
+              Free during the design-partner beta. No credit card, no PHI —
+              trial it with sample notes.
             </p>
           </div>
 

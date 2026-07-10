@@ -9,14 +9,11 @@ export function Nav() {
           <a href="#how" className="transition-colors hover:text-ink">
             How it works
           </a>
+          <a href="#why" className="transition-colors hover:text-ink">
+            Why psychiatry
+          </a>
           <a href="#pricing" className="transition-colors hover:text-ink">
-            Pricing
-          </a>
-          <a href="#" className="transition-colors hover:text-ink">
-            Security
-          </a>
-          <a href="#" className="transition-colors hover:text-ink">
-            Docs
+            Early access
           </a>
         </nav>
         <div className="flex items-center gap-2">

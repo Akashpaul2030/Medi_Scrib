@@ -26,9 +26,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ScribeAI — SOAP notes from dictation",
+  title: "ScribeAI — structured SOAP notes for outpatient psychiatry",
   description:
-    "ScribeAI turns your 30-second dictation into a complete SOAP note in under 15 seconds.",
+    "ScribeAI turns messy psychiatry dictation into a structured SOAP note in about 15 seconds — and flags ambiguity instead of inventing it.",
 };
 
 export default function RootLayout({

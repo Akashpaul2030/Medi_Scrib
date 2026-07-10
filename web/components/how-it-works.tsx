@@ -4,23 +4,23 @@ const STEPS = [
   {
     n: "01",
     icon: <MicIcon size={22} stroke={1.6} />,
-    title: "Dictate",
+    title: "Capture",
     body:
-      "Speak naturally after the visit. ScribeAI captures with medical-grade speech recognition — no scripts, no templates to memorize.",
+      "Type or paste your free-text dictation, upload a document (PDF, DOCX, and more), or speak it out loud. You always see and can edit the raw text before it becomes a note.",
   },
   {
     n: "02",
     icon: <SparklesIcon size={22} stroke={1.6} />,
     title: "Structure",
     body:
-      "Our model separates Subjective, Objective, Assessment and Plan, pulls problem lists and codes, and flags anything ambiguous.",
+      "One click separates Subjective, Objective, Assessment and Plan — diagnoses with ICD-10 codes and status (active, resolved, or explicitly ruled out), each medication's dose, route, and frequency, and a flag on anything ambiguous instead of a guess.",
   },
   {
     n: "03",
     icon: <FileCheckIcon size={22} stroke={1.6} />,
-    title: "Sign",
+    title: "Review & export",
     body:
-      "Review the draft inline, edit with one keystroke, then sign. We never store audio after the note is finalized.",
+      "Edit any field inline, then copy as Markdown, download JSON, or export a formatted PDF. Audio is transcribed and discarded — we never store recordings.",
   },
 ];
 
@@ -33,7 +33,7 @@ export function HowItWorks() {
             How it works
           </div>
           <h2 className="font-display mt-3 text-[34px] font-medium leading-[1.1] text-ink lg:text-[40px]">
-            Three steps, fewer than fifteen seconds.
+            Three steps, about fifteen seconds.
           </h2>
           <p className="mt-4 max-w-[520px] text-[15.5px] text-ink/65">
             ScribeAI was built around the workflow clinicians already use, not

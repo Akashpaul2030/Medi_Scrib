@@ -124,11 +124,11 @@ export function HeroMockup() {
             </SoapLine>
           </div>
           <div className="flex items-center justify-between border-t border-line/80 px-4 py-2.5">
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-teal">
-              <Check size={12} stroke={2.2} /> Ready to sign
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-coral">
+              <Check size={12} stroke={2.2} /> 1 flag for review
             </span>
             <span className="inline-flex h-5 items-center rounded border border-line bg-paper px-1.5 font-mono text-[10px] text-mute">
-              ⌘ ↵ Sign
+              Export
             </span>
           </div>
         </div>

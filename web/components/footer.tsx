@@ -11,13 +11,11 @@ export function Footer() {
           </span>
         </div>
         <div className="flex items-center gap-7 text-[13px] text-mute">
-          <a href="#" className="transition-colors hover:text-ink">
-            Privacy
-          </a>
-          <a href="#" className="transition-colors hover:text-ink">
-            Terms
-          </a>
-          <a href="#" className="transition-colors hover:text-ink">
+          <span>In design-partner beta — sample notes only, no PHI.</span>
+          <a
+            href="mailto:akashpaul2030@gmail.com"
+            className="transition-colors hover:text-ink"
+          >
             Contact
           </a>
         </div>

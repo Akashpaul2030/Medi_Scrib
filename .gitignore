@@ -1,7 +1,11 @@
 # Environment / secrets
 .env
+.env.bak
 .env.local
 .env.*.local
+
+# Prospect research — real people's contact info; never publish (repo is public)
+marketing/prospects/
 
 # Python
 .venv/

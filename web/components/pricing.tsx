@@ -1,12 +1,12 @@
 import { ArrowRight, Check } from "./icons";
 
 const FEATURES = [
-  "Unlimited notes",
-  "SOAP, DAP, and progress note formats",
-  "Medical vocabulary & abbreviations",
-  "Export to EHR (copy-paste or API)",
-  "Audio deleted after signing",
-  "30-day money back",
+  "Unlimited notes during the beta",
+  "Structured SOAP with ICD-10 codes",
+  "Flags for review on every note",
+  "Upload documents or dictate audio",
+  "Semantic search, Ask, and visit Compare",
+  "Copy Markdown, JSON, or PDF export",
 ];
 
 export function Pricing() {
@@ -16,24 +16,25 @@ export function Pricing() {
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <div className="max-w-[480px]">
             <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-teal">
-              Pricing
+              Early access
             </div>
             <h2 className="font-display mt-3 text-[34px] font-medium leading-[1.1] text-ink lg:text-[40px]">
-              One plan. No per-note fees.
+              Free for design partners. Founding price locked for life.
             </h2>
             <p className="mt-4 text-[15.5px] text-ink/65">
-              We price ScribeAI for the way clinicians actually work — flat,
-              predictable, and reversible. If it doesn&rsquo;t save you an hour
-              a day in the first month, we refund you.
+              ScribeAI is in an 8-week design-partner beta with a small group of
+              outpatient psychiatry clinicians. Use it weekly on sample notes,
+              tell us honestly where it&rsquo;s wrong, and shape what gets
+              built.
             </p>
             <div className="mt-6 flex flex-col gap-2 text-[13.5px] text-mute">
               <div className="flex items-center gap-2">
-                <Check size={14} stroke={2} className="text-teal" /> Cancel
-                anytime, in one click.
+                <Check size={14} stroke={2} className="text-teal" /> No
+                contract, no payment, no EHR setup.
               </div>
               <div className="flex items-center gap-2">
-                <Check size={14} stroke={2} className="text-teal" /> SOC 2 Type
-                II in progress.
+                <Check size={14} stroke={2} className="text-teal" /> No PHI —
+                trial with sample or de-identified notes only.
               </div>
             </div>
           </div>
@@ -45,16 +46,18 @@ export function Pricing() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-mute">
-                      Solo
+                      Design partner
                     </div>
                     <div className="mt-3 flex items-baseline gap-1">
                       <span className="font-display text-[52px] font-medium leading-none text-ink">
-                        $99
+                        $0
                       </span>
-                      <span className="text-[14px] text-mute">/month</span>
+                      <span className="text-[14px] text-mute">
+                        for 8 weeks
+                      </span>
                     </div>
                     <div className="mt-1 text-[13px] text-mute">
-                      For independent clinicians.
+                      Then founding pricing, locked for life.
                     </div>
                   </div>
                   <span
@@ -62,7 +65,7 @@ export function Pricing() {
                     style={{ background: "rgba(249,112,102,0.08)" }}
                   >
                     <span className="block h-1.5 w-1.5 rounded-full bg-coral" />
-                    30-day money back
+                    5 spots
                   </span>
                 </div>
 
@@ -79,23 +82,26 @@ export function Pricing() {
 
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   <a
-                    href="#"
+                    href="/app"
                     className="btn-primary inline-flex h-11 items-center gap-2 rounded-md px-5 text-[14.5px] font-medium shadow-softer"
                   >
-                    Start 14-day pilot
+                    Try the live demo
                     <ArrowRight size={16} stroke={2} />
                   </a>
                   <a
-                    href="#"
+                    href="mailto:akashpaul2030@gmail.com?subject=ScribeAI%20design%20partner"
                     className="text-[13.5px] font-medium text-ink/70 hover:text-ink"
                   >
-                    Talk to a clinician on our team →
+                    Email Akash, the founder →
                   </a>
                 </div>
               </div>
               <div className="flex items-center justify-between border-t border-line/80 bg-paper px-8 py-3.5 text-[12px] text-mute lg:px-10">
-                <span>Group plans available for practices of 5+.</span>
-                <span className="font-mono tabular-nums">SOLO-2026</span>
+                <span>
+                  What you give back: use it weekly and a 15-minute feedback
+                  call every two weeks.
+                </span>
+                <span className="font-mono tabular-nums">BETA-2026</span>
               </div>
             </div>
           </div>
