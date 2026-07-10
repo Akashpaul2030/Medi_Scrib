@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
+from api.billing import router as billing_router
 from api.ingest import parse_to_markdown
 from api.pdf_export import soap_to_pdf
 from api.rag_graph import run_ask, run_compare
@@ -40,6 +41,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ScribeAI", version="0.1.0", lifespan=lifespan)
+
+app.include_router(billing_router)
 
 app.add_middleware(
     CORSMiddleware,

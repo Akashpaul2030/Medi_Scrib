@@ -69,6 +69,57 @@ export default function AppPage() {
   const [askLoading, setAskLoading] = useState(false);
   const [genTime, setGenTime] = useState<number | null>(null);
 
+  const [billingEnabled, setBillingEnabled] = useState(false);
+  const [billingActive, setBillingActive] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    void (async () => {
+      try {
+        const cfg = (await fetch(`${API_URL}/billing/config`).then((r) => r.json())) as { enabled: boolean };
+        if (!cfg.enabled) return;
+        setBillingEnabled(true);
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get("session_id");
+        if (params.get("billing") === "success" && sessionId) {
+          const res = await fetch(`${API_URL}/billing/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+          if (res.ok) setBillingNotice("Subscription active — thank you for being a founding customer.");
+          window.history.replaceState(null, "", "/app");
+        }
+        const st = (await fetch(`${API_URL}/billing/status`, { headers: authHeaders() }).then((r) =>
+          r.json(),
+        )) as { active: boolean };
+        setBillingActive(Boolean(st.active));
+      } catch {
+        // Billing is optional — never block the app on it.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  async function startCheckout() {
+    setBillingLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ plan: "founding" }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Checkout failed");
+      setBillingLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (status === "authenticated") void loadRecent();
   }, [status]);
@@ -429,8 +480,25 @@ export default function AppPage() {
               Paste or type your dictation. Structured SOAP note appears on the
               right.
             </p>
+            {billingNotice && (
+              <p className="mt-1 text-[13px] font-medium text-teal">{billingNotice}</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {billingEnabled &&
+              (billingActive ? (
+                <span className="inline-flex h-9 items-center rounded-md border border-teal/30 bg-teal/5 px-3 text-[13px] font-medium text-teal">
+                  Founding member
+                </span>
+              ) : (
+                <button
+                  onClick={() => void startCheckout()}
+                  disabled={billingLoading}
+                  className="btn-primary h-9 rounded-md px-3 text-[13px] font-medium"
+                >
+                  {billingLoading ? "Redirecting…" : "Go founding — $39/mo"}
+                </button>
+              ))}
             <span className="text-[12px] text-mute">{session?.user?.email}</span>
             <button
               onClick={() => void signOut({ callbackUrl: "/login" })}

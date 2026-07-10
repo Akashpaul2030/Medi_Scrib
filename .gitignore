@@ -43,6 +43,9 @@ yarn-error.log*
 # Generated note exports
 soap-note-*.json
 
+# Local billing state (Stripe subscription cache)
+billing.db
+
 # Server output and scratch files
 uvicorn_out.txt
 uvicorn_err.txt
