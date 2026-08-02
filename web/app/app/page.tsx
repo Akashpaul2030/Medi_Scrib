@@ -469,9 +469,9 @@ export default function AppPage() {
 
   return (
     <div className="min-h-screen bg-paper">
-      <Nav />
+      <Nav variant="app" />
       <main className="mx-auto max-w-[1600px] px-6 py-10">
-        <div className="mb-8 flex items-end justify-between gap-4">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="font-display text-[34px] font-medium leading-tight text-ink">
               New note
@@ -484,7 +484,7 @@ export default function AppPage() {
               <p className="mt-1 text-[13px] font-medium text-teal">{billingNotice}</p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {billingEnabled &&
               (billingActive ? (
                 <span className="inline-flex h-9 items-center rounded-md border border-teal/30 bg-teal/5 px-3 text-[13px] font-medium text-teal">
