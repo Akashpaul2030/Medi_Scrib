@@ -5,13 +5,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import assemblyai as aai
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
+from api.auth import get_user_id
 from api.billing import router as billing_router
+from api.db import init_db
 from api.ingest import parse_to_markdown
 from api.pdf_export import soap_to_pdf
 from api.rag_graph import run_ask, run_compare
@@ -21,14 +23,11 @@ from api.schemas import (
     SOAPNote, SearchRequest, SearchResponse, StructureResponse,
 )
 from api.structure import to_soap
+from api.usage import QuotaExceeded, consume, get_state, refund
 from api.vector_store import (
     ensure_collection, list_notes, list_patient_notes, list_patients,
     retrieve_note, save_note, search_notes, set_patient_label,
 )
-
-def get_user_id(x_user_id: str = Header("anonymous", alias="X-User-Id")) -> str:
-    return x_user_id or "anonymous"
-
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 ALLOWED_SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".htm", ".md", ".txt"}
@@ -36,6 +35,7 @@ ALLOWED_SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".htm", ".md", ".txt"}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
     ensure_collection()
     yield
 
@@ -44,9 +44,14 @@ app = FastAPI(title="ScribeAI", version="0.1.0", lifespan=lifespan)
 
 app.include_router(billing_router)
 
+# Extra origins (the deployed frontend) come from CORS_ORIGINS as a comma-
+# separated list. Never widen this to "*" — credentials are sent on requests.
+_DEFAULT_ORIGINS = ["http://localhost:3000", "http://localhost:3001"]
+_EXTRA_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=_DEFAULT_ORIGINS + _EXTRA_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,17 +67,33 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/usage")
+def usage(user_id: str = Depends(get_user_id)) -> dict:
+    """Current plan, notes used this month, and credits left."""
+    return get_state(user_id).model_dump()
+
+
 @app.post("/structure", response_model=StructureResponse)
 def structure(req: StructureRequest, background_tasks: BackgroundTasks,
               user_id: str = Depends(get_user_id)) -> StructureResponse:
+    # Structuring a note is the billable unit. Charge before calling the model
+    # so a user cannot outrun the counter with concurrent requests; refund
+    # below if the model call itself fails, since they got nothing for it.
+    try:
+        quota = consume(user_id)
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=402, detail=e.state.model_dump())
+
     try:
         note = to_soap(req.text)
-        note_id = str(uuid.uuid4())
-        background_tasks.add_task(save_note, note, req.text, user_id, note_id)
-        return StructureResponse(note=note, note_id=note_id)
     except Exception as e:
+        refund(user_id)
         logger.exception("Structuring failed")
         raise HTTPException(status_code=502, detail=f"Structuring failed: {e}")
+
+    note_id = str(uuid.uuid4())
+    background_tasks.add_task(save_note, note, req.text, user_id, note_id)
+    return StructureResponse(note=note, note_id=note_id, usage=quota)
 
 
 class IngestResponse(BaseModel):
@@ -83,7 +104,9 @@ class IngestResponse(BaseModel):
 
 
 @app.post("/ingest", response_model=IngestResponse)
-async def ingest(file: UploadFile = File(...)) -> IngestResponse:
+async def ingest(file: UploadFile = File(...),
+                 user_id: str = Depends(get_user_id)) -> IngestResponse:
+    # Parsing is free but CPU-heavy, so it stays behind sign-in.
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise HTTPException(
@@ -125,7 +148,14 @@ ALLOWED_AUDIO_SUFFIXES = {".webm", ".mp4", ".mp3", ".wav", ".m4a", ".ogg"}
 
 
 @app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)) -> dict[str, str]:
+async def transcribe(audio: UploadFile = File(...),
+                     user_id: str = Depends(get_user_id)) -> dict[str, str]:
+    # Transcription is not itself billable — the note it feeds is — but it is
+    # the most expensive call we make, so someone out of quota cannot run it.
+    state = get_state(user_id)
+    if not state.can_structure:
+        raise HTTPException(status_code=402, detail=state.model_dump())
+
     aai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY", "")
     if not aai.settings.api_key:
         raise HTTPException(status_code=500, detail="ASSEMBLYAI_API_KEY not set")
@@ -312,7 +342,7 @@ class PdfExportRequest(BaseModel):
 
 
 @app.post("/export/pdf")
-def export_pdf(req: PdfExportRequest) -> Response:
+def export_pdf(req: PdfExportRequest, user_id: str = Depends(get_user_id)) -> Response:
     try:
         pdf_bytes = soap_to_pdf(req.note, req.created_at)
         return Response(

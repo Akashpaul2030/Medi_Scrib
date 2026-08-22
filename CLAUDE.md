@@ -35,7 +35,11 @@ pytest -k case_001                      # filter by synthetic case id
 Tests hit the real DeepSeek API (no mocking) — every run costs tokens and is non-deterministic. The suite auto-skips when `DEEPSEEK_API_KEY` is missing rather than failing.
 
 ### Environment
-`.env` at repo root is loaded by both `api/structure.py` and `tests/test_extraction.py`. Required key: `DEEPSEEK_API_KEY`. Frontend reads `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000`).
+`.env` at repo root is loaded by `api/structure.py`, `api/db.py`, `api/usage.py`, `api/billing.py` and `tests/test_extraction.py`. Required keys: `DEEPSEEK_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `API_JWT_SECRET`. See `.env.example` for the full list and `DEPLOY.md` for where each value comes from.
+
+`API_JWT_SECRET` must be **identical** in `.env` and `web/.env.local` — it signs the tokens the frontend mints and the backend verifies. Mismatched values mean every request 401s.
+
+Local sign-in without Google credentials: `ALLOW_DEV_LOGIN=true` and `NEXT_PUBLIC_ALLOW_DEV_LOGIN=true` in `web/.env.local`. Both are ignored in a production build.
 
 ## Architecture
 
@@ -62,6 +66,26 @@ The model is **DeepSeek** via the OpenAI-compatible client (`base_url="https://a
 ### Synthetic test cases
 
 `synthetic/case_NNN.txt` + `case_NNN.expected.json` pairs drive the test suite. `tests/test_extraction.py` is parametrized over the `CASES` list — **add new case ids there** when adding fixtures. The assertions are intentionally fuzzy (substring/token match on med names, token-overlap on diagnosis descriptions) because the LLM rephrases freely; do not tighten them to exact-match without a reason.
+
+### Auth and billing
+
+Identity is a **signed bearer token, never a header**. `api/auth.py` verifies an HS256 JWT on every request; there is deliberately no `X-User-Id` fallback, so a misconfigured deploy fails closed. The token is minted server-side by `web/app/api/token/route.ts` from the NextAuth session and cached in memory by `web/lib/api.ts`, which refreshes it on expiry and retries once on a 401. All frontend calls go through `apiFetch` — do not call `fetch` against the API directly, it will 401.
+
+Only `/health` and `/billing/config` are public. Everything else requires a token.
+
+`api/usage.py` meters the free tier. **One structured note is one billable unit**; reading, searching, `/ask` and `/compare` are free. A user spends their monthly allowance first (`FREE_MONTHLY_NOTES`, default 10; `PAID_MONTHLY_NOTES`, default 150) and only then purchased credits, which never expire. `consume()` charges *before* the model call and `refund()` puts the unit back if the call fails — check-and-decrement happens inside one `BEGIN IMMEDIATE` transaction, so concurrent requests cannot both spend the last credit. Over quota returns **402** with the `QuotaState` as the detail body; the frontend turns that into the paywall.
+
+`api/billing.py` uses **Paddle as merchant of record** — Stripe does not onboard merchants in Bangladesh, so Paddle is the legal seller and remits to us. It stays dormant until `PADDLE_API_KEY` is set (every endpoint but `/billing/config` returns 503). Unlike Stripe there are no inline prices: every `PADDLE_PRICE_*` must be set or checkout returns 503. Run `python scripts/paddle_setup.py` to create the catalogue and print the ids. Sandbox and production are entirely separate accounts with different keys *and* different price ids.
+
+Three rules hold the payment path together, and all three are load-bearing:
+
+1. **Transactions are created server-side** (`_create_checkout`), stamping the verified email into `custom_data`, so a browser cannot redirect someone else's payment onto its own account.
+2. **Credit amounts derive from the paid `price_id`**, never from `custom_data` — a tampered checkout cannot mint credits because the user must actually pay for a price we recognise.
+3. **Fulfilment happens only in the webhook.** The browser returning from checkout just polls `/usage`. Signatures are HMAC-SHA256 over `ts:raw_body` (the raw bytes — re-serialising the JSON breaks it) with a 5-minute replay window, and both the event id and the transaction id go into `processed_events` so a retry cannot double-credit.
+
+Subscription webhooks identify a customer, not an email, so `billing_customers` maps `customer_id → email`; it is populated on `transaction.completed`, which is why that event must be subscribed alongside the subscription ones.
+
+Commercial state (subscriptions, usage counters, credits) lives in SQLite via `api/db.py` — everything clinical stays in Qdrant. On Fly.io that file sits on a mounted volume; losing it costs only the usage counters, since Paddle can rebuild subscriptions.
 
 ### Things to know that aren't obvious from the code
 

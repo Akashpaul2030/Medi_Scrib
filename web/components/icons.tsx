@@ -1,6 +1,9 @@
 import type { SVGProps } from "react";
 
-type IconProps = SVGProps<SVGSVGElement> & {
+// `stroke` is omitted from SVGProps before being re-added as a number: SVG's
+// own `stroke` is a colour string, and intersecting the two collapses the type
+// to `never`, which is what every call site was erroring on.
+type IconProps = Omit<SVGProps<SVGSVGElement>, "stroke"> & {
   size?: number;
   stroke?: number;
 };

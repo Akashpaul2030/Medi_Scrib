@@ -5,11 +5,10 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { soapToMarkdown } from "@/lib/markdown";
+import { API_URL, apiFetch, clearToken, QuotaError, type QuotaState } from "@/lib/api";
 import type { AskResponse, CompareResponse, Diagnosis, Medication, NoteDetail, NoteRecord, PatientRecord, SOAPNote, StructureResponse } from "@/lib/types";
 
 const ALLOWED_TYPES = ".pdf,.docx,.pptx,.html,.htm,.md,.txt";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const SAMPLE = `Follow-up visit, 34-year-old female with recurrent major depressive disorder and generalized anxiety. Patient reports mood is improved on sertraline 100 mg daily over the last six weeks, sleep better, appetite returning. Still some morning anxiety, denies suicidal ideation, no homicidal ideation, no psychotic symptoms. Mental status: alert, cooperative, mood euthymic, affect congruent, no SI/HI. Continue sertraline 100 mg daily, add hydroxyzine 25 mg PO at bedtime as needed for anxiety. Follow up in 6 weeks.`;
 
@@ -19,12 +18,11 @@ export default function AppPage() {
   const userId = session?.user?.id ?? "anonymous";
 
   useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
+    if (status === "unauthenticated") {
+      clearToken();
+      router.push("/login");
+    }
   }, [status, router]);
-
-  function authHeaders(): Record<string, string> {
-    return { "X-User-Id": userId };
-  }
 
   const [text, setText] = useState("");
   const [note, setNote] = useState<SOAPNote | null>(null);
@@ -73,26 +71,64 @@ export default function AppPage() {
   const [billingActive, setBillingActive] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
+  const [usage, setUsage] = useState<QuotaState | null>(null);
+  const [paywall, setPaywall] = useState(false);
+
+  async function refreshUsage() {
+    try {
+      const res = await apiFetch(`/usage`);
+      if (res.ok) setUsage((await res.json()) as QuotaState);
+    } catch {
+      // The meter is informational; never block the app on it.
+    }
+  }
 
   useEffect(() => {
     if (status !== "authenticated") return;
     void (async () => {
+      void refreshUsage();
       try {
         const cfg = (await fetch(`${API_URL}/billing/config`).then((r) => r.json())) as { enabled: boolean };
         if (!cfg.enabled) return;
         setBillingEnabled(true);
         const params = new URLSearchParams(window.location.search);
-        const sessionId = params.get("session_id");
-        if (params.get("billing") === "success" && sessionId) {
-          const res = await fetch(`${API_URL}/billing/confirm`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ session_id: sessionId }),
-          });
-          if (res.ok) setBillingNotice("Subscription active — thank you for being a founding customer.");
+        if (params.get("billing") === "success") {
           window.history.replaceState(null, "", "/app");
+          setPaywall(false);
+          setBillingNotice("Payment received — confirming with Paddle…");
+          // Paddle fulfils through the webhook, which usually lands within a
+          // second or two of the redirect but is not guaranteed to beat it.
+          // Poll briefly rather than claiming success the payment has not
+          // actually granted yet.
+          const before = usage;
+          let applied = false;
+          for (let attempt = 0; attempt < 6 && !applied; attempt++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const res = await apiFetch(`/usage`);
+            if (!res.ok) continue;
+            const next = (await res.json()) as QuotaState;
+            setUsage(next);
+            if (
+              !before ||
+              next.credits > before.credits ||
+              next.allowance > before.allowance
+            ) {
+              applied = true;
+              setBillingNotice(
+                next.credits > (before?.credits ?? 0)
+                  ? `Credits added — ${next.credits} available.`
+                  : "Subscription active — thank you for being a founding customer.",
+              );
+            }
+          }
+          if (!applied) {
+            setBillingNotice(
+              "Payment received. It is taking a moment to appear — refresh in a minute, " +
+                "and email us if it still hasn't.",
+            );
+          }
         }
-        const st = (await fetch(`${API_URL}/billing/status`, { headers: authHeaders() }).then((r) =>
+        const st = (await apiFetch(`/billing/status`).then((r) =>
           r.json(),
         )) as { active: boolean };
         setBillingActive(Boolean(st.active));
@@ -103,12 +139,29 @@ export default function AppPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  async function buyCredits(pack: string) {
+    setBillingLoading(true);
+    try {
+      const res = await apiFetch(`/billing/credits/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not start checkout");
+      setBillingLoading(false);
+    }
+  }
+
   async function startCheckout() {
     setBillingLoading(true);
     try {
-      const res = await fetch(`${API_URL}/billing/checkout`, {
+      const res = await apiFetch(`/billing/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: "founding" }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -133,7 +186,7 @@ export default function AppPage() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch(`${API_URL}/notes`, { headers: authHeaders() });
+      const res = await apiFetch(`/notes`);
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as { results: NoteRecord[]; total: number };
       setRecentNotes(data.results);
@@ -150,9 +203,9 @@ export default function AppPage() {
     setHistoryError(null);
     setHistorySearched(true);
     try {
-      const res = await fetch(`${API_URL}/search`, {
+      const res = await apiFetch(`/search`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: searchQuery, limit: 10 }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -171,9 +224,9 @@ export default function AppPage() {
     setHistoryError(null);
     setAskResult(null);
     try {
-      const res = await fetch(`${API_URL}/ask`, {
+      const res = await apiFetch(`/ask`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: askQuestion }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -188,7 +241,7 @@ export default function AppPage() {
 
   async function loadNote(note_id: string) {
     try {
-      const res = await fetch(`${API_URL}/notes/${note_id}`, { headers: authHeaders() });
+      const res = await apiFetch(`/notes/${note_id}`);
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as NoteDetail;
       setNote(data.note);
@@ -207,9 +260,9 @@ export default function AppPage() {
     setCopied(false);
     const started = performance.now();
     try {
-      const res = await fetch(`${API_URL}/structure`, {
+      const res = await apiFetch(`/structure`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {
@@ -222,9 +275,16 @@ export default function AppPage() {
       setPatientLabel("");
       setPatientLabelSaved(false);
       setGenTime(Math.round((performance.now() - started) / 100) / 10);
+      // The response carries the post-charge quota, so the meter updates
+      // without a second round trip.
+      if (data.usage) setUsage(data.usage);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Request failed";
-      setError(msg);
+      if (e instanceof QuotaError) {
+        if (e.usage) setUsage(e.usage);
+        setPaywall(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Request failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -250,7 +310,7 @@ export default function AppPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_URL}/ingest`, { method: "POST", headers: authHeaders(), body: fd });
+      const res = await apiFetch(`/ingest`, { method: "POST", body: fd });
       if (!res.ok) {
         const detail = await res.text().catch(() => res.statusText);
         throw new Error(`Ingest ${res.status}: ${detail.slice(0, 200)}`);
@@ -330,7 +390,7 @@ export default function AppPage() {
       setIngesting(true);
       setError(null);
       try {
-        const res = await fetch(`${API_URL}/transcribe`, { method: "POST", headers: authHeaders(), body: fd });
+        const res = await apiFetch(`/transcribe`, { method: "POST", body: fd });
         if (!res.ok) throw new Error(`Transcribe ${res.status}`);
         const data = (await res.json()) as { text: string };
         setText(data.text);
@@ -348,9 +408,9 @@ export default function AppPage() {
   async function assignLabel() {
     if (!currentNoteId || !patientLabel.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/notes/${currentNoteId}/label`, {
+      const res = await apiFetch(`/notes/${currentNoteId}/label`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patient_label: patientLabel.trim() }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -363,7 +423,7 @@ export default function AppPage() {
   async function loadPatients() {
     setPatientsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/patients`, { headers: authHeaders() });
+      const res = await apiFetch(`/patients`);
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as { patients: PatientRecord[] };
       setPatients(data.patients);
@@ -378,9 +438,8 @@ export default function AppPage() {
     setPatientNotesLoading(true);
     setCompareResult(null);
     try {
-      const res = await fetch(
-        `${API_URL}/patients/${encodeURIComponent(label)}/notes`,
-        { headers: authHeaders() },
+      const res = await apiFetch(
+        `/patients/${encodeURIComponent(label)}/notes`,
       );
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as { results: NoteRecord[] };
@@ -400,12 +459,12 @@ export default function AppPage() {
     setCompareLoading(true);
     setCompareResult(null);
     try {
-      const res1 = await fetch(`${API_URL}/notes/${histNote.note_id}`, { headers: authHeaders() });
+      const res1 = await apiFetch(`/notes/${histNote.note_id}`);
       if (!res1.ok) throw new Error(`API ${res1.status}`);
       const detail = (await res1.json()) as NoteDetail;
-      const res2 = await fetch(`${API_URL}/compare`, {
+      const res2 = await apiFetch(`/compare`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note_a: detail.note, note_b: note }),
       });
       if (!res2.ok) throw new Error(`API ${res2.status}`);
@@ -441,9 +500,9 @@ export default function AppPage() {
   async function downloadPdf() {
     if (!note) return;
     try {
-      const res = await fetch(`${API_URL}/export/pdf`, {
+      const res = await apiFetch(`/export/pdf`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note, created_at: new Date().toISOString() }),
       });
       if (!res.ok) throw new Error(`PDF export ${res.status}`);
@@ -484,7 +543,8 @@ export default function AppPage() {
               <p className="mt-1 text-[13px] font-medium text-teal">{billingNotice}</p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {usage && <UsageMeter usage={usage} />}
             {billingEnabled &&
               (billingActive ? (
                 <span className="inline-flex h-9 items-center rounded-md border border-teal/30 bg-teal/5 px-3 text-[13px] font-medium text-teal">
@@ -523,7 +583,21 @@ export default function AppPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_340px]">
+        {paywall && usage && (
+          <Paywall
+            usage={usage}
+            billingEnabled={billingEnabled}
+            busy={billingLoading}
+            onSubscribe={() => void startCheckout()}
+            onBuyCredits={(pack) => void buyCredits(pack)}
+            onClose={() => setPaywall(false)}
+          />
+        )}
+
+        {/* min-w-0 on the children: without it a grid item refuses to shrink
+            below its content's intrinsic width and the whole page scrolls
+            sideways on a laptop screen. */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_340px] [&>*]:min-w-0">
           <section className="rounded-xl border border-line bg-white p-5 shadow-softer">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-[13px] font-semibold uppercase tracking-wide text-mute">
@@ -1312,6 +1386,110 @@ function FlagList({
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** Compact "7 of 10 notes" pill, with credits shown once any are held. */
+function UsageMeter({ usage }: { usage: QuotaState }) {
+  const used = Math.min(usage.used, usage.allowance);
+  const pct = usage.allowance > 0 ? Math.round((used / usage.allowance) * 100) : 100;
+  // Warn within the last fifth of the allowance rather than at a fixed count,
+  // so a small plan doesn't render as "nearly out" the moment it is issued.
+  const threshold = Math.max(1, Math.ceil(usage.allowance * 0.2));
+  const low = usage.credits === 0 && usage.remaining_allowance <= threshold;
+
+  return (
+    <span
+      title={`Plan: ${usage.plan} · resets ${usage.period}`}
+      className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] ${
+        low ? "border-coral/40 bg-coral/5 text-coral" : "border-line bg-white text-mute"
+      }`}
+    >
+      <span className="relative h-1.5 w-16 overflow-hidden rounded-full bg-line">
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full ${low ? "bg-coral" : "bg-teal"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="tabular-nums">
+        {usage.used} / {usage.allowance}
+      </span>
+      {usage.credits > 0 && (
+        <span className="tabular-nums text-teal">+{usage.credits} credits</span>
+      )}
+    </span>
+  );
+}
+
+/** Shown when the backend refuses a note for lack of quota. */
+function Paywall({
+  usage,
+  billingEnabled,
+  busy,
+  onSubscribe,
+  onBuyCredits,
+  onClose,
+}: {
+  usage: QuotaState;
+  billingEnabled: boolean;
+  busy: boolean;
+  onSubscribe: () => void;
+  onBuyCredits: (pack: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mb-6 rounded-xl border border-coral/30 bg-coral/5 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-[20px] font-medium text-ink">
+            You&apos;ve used all {usage.allowance} notes this month
+          </h2>
+          <p className="mt-1 max-w-[560px] text-[14px] text-mute">
+            Your free allowance resets at the start of next month. To keep going
+            now, subscribe for a larger monthly allowance or buy credits that
+            never expire.
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Dismiss"
+          className="text-[18px] leading-none text-mute hover:text-ink"
+        >
+          ×
+        </button>
+      </div>
+
+      {billingEnabled ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={onSubscribe}
+            disabled={busy}
+            className="btn-primary h-9 rounded-md px-3 text-[13px] font-medium"
+          >
+            {busy ? "Redirecting…" : "Subscribe — $39/mo for 150 notes"}
+          </button>
+          <button
+            onClick={() => onBuyCredits("pack_25")}
+            disabled={busy}
+            className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"
+          >
+            25 credits — $15
+          </button>
+          <button
+            onClick={() => onBuyCredits("pack_100")}
+            disabled={busy}
+            className="btn-ghost h-9 rounded-md border border-line bg-white px-3 text-[13px] font-medium text-ink"
+          >
+            100 credits — $50
+          </button>
+        </div>
+      ) : (
+        <p className="mt-4 text-[13px] text-mute">
+          Payments aren&apos;t switched on yet — email the founder to have your
+          limit raised.
+        </p>
       )}
     </div>
   );

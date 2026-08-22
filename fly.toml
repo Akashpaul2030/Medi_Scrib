@@ -1,0 +1,55 @@
+# Fly.io config for the ScribeAI API.
+#
+# Create the app and volume once:
+#   fly launch --no-deploy --name scribeai-api
+#   fly volumes create scribeai_data --size 3 --region lhr
+# Then set secrets (see DEPLOY.md) and `fly deploy`.
+
+app = "scribeai-api"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  FRONTEND_URL = "https://scribeai.vercel.app"
+  CORS_ORIGINS = "https://scribeai.vercel.app"
+  FREE_MONTHLY_NOTES = "10"
+  PAID_MONTHLY_NOTES = "150"
+
+# Holds billing.db plus the FastEmbed/HF model caches. Losing it costs the
+# usage counters (which reset in the user's favour) and forces one model
+# re-download; subscriptions can always be replayed from Stripe.
+[[mounts]]
+  source = "scribeai_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Never scale to zero: a cold start pays the model-load cost, and Stripe
+  # webhooks time out rather than wait for it.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+# Structuring calls can take a few seconds; the default 5s grace is too tight
+# while the embedding model loads on boot.
+[[http_service.checks]]
+  grace_period = "60s"
+  interval = "30s"
+  method = "GET"
+  timeout = "10s"
+  path = "/health"
+
+[[vm]]
+  # torch + the ONNX embedding model need real memory; 512 MB OOMs on boot.
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2

@@ -2,6 +2,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from api.usage import QuotaState
+
 
 class DiagnosisStatus(str, Enum):
     active = "active"
@@ -105,6 +107,9 @@ class AskResponse(BaseModel):
 class StructureResponse(BaseModel):
     note: SOAPNote
     note_id: str
+    # Quota snapshot after this note was charged, so the UI can update its
+    # meter without a second round trip.
+    usage: QuotaState | None = None
 
 
 class PatientRecord(BaseModel):
