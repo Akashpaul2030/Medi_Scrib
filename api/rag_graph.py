@@ -21,6 +21,8 @@ llm = ChatOpenAI(
 class GraphState(TypedDict):
     question: str
     user_id: str
+    # When set, retrieval is hard-limited to one patient's notes.
+    patient_label: str | None
     documents: list[dict]
     generation: str | None
     grounded: bool
@@ -46,7 +48,12 @@ def _parse_score(text: str, default: str) -> str:
 
 
 def retrieve(state: GraphState) -> dict:
-    results = search_notes(state["question"], user_id=state["user_id"], limit=5)
+    results = search_notes(
+        state["question"],
+        user_id=state["user_id"],
+        limit=5,
+        patient_label=state.get("patient_label"),
+    )
     return {"documents": results}
 
 
@@ -136,7 +143,12 @@ def _fmt_doc(doc: dict) -> str:
          if isinstance(m, dict) else str(m))
         for m in meds
     ) if isinstance(meds, list) else ""
+    # The patient label leads, because without it the model has no way to tell
+    # two people's notes apart and will describe them as one patient.
+    label = doc.get("patient_label") or "UNLABELLED (patient not identified)"
     return (
+        f"Patient: {label}\n"
+        f"Visit date: {doc.get('created_at', 'unknown')}\n"
         f"Chief complaint: {doc.get('chief_complaint', '')}\n"
         f"Subjective: {doc.get('subjective', '')}\n"
         f"Objective: {doc.get('objective', '')}\n"
@@ -157,6 +169,25 @@ def generate(state: GraphState) -> dict:
         }
 
     context = "\n\n---\n\n".join(_fmt_doc(doc) for doc in documents)
+
+    scoped = state.get("patient_label")
+    if scoped:
+        scope_rule = (
+            f"Every note below belongs to {scoped}. Answer only about this patient."
+        )
+    else:
+        # The dangerous case: notes from different people retrieved together.
+        # Without this the model writes "the patient is taking..." and silently
+        # merges two people's medications into one answer.
+        scope_rule = (
+            "The notes below may belong to DIFFERENT patients — check the "
+            "'Patient:' line on each. Never merge details from different "
+            "patients into one statement, and never write 'the patient' when "
+            "more than one appears. Attribute every fact to a named patient "
+            "and visit date. If notes are UNLABELLED you cannot assume they "
+            "are the same person; say so rather than combining them."
+        )
+
     messages = [
         {
             "role": "system",
@@ -164,7 +195,8 @@ def generate(state: GraphState) -> dict:
                 "You are a clinical documentation assistant. Answer the "
                 "question using ONLY the provided SOAP note excerpts. "
                 "Do not invent or infer information not present in the "
-                "notes. Be concise and cite which notes support your answer."
+                "notes. Be concise and cite which notes support your answer.\n"
+                f"{scope_rule}"
             ),
         },
         {
@@ -237,11 +269,13 @@ def build_graph() -> StateGraph:
 ask_graph = build_graph().compile()
 
 
-def run_ask(question: str, user_id: str = "anonymous") -> dict:
+def run_ask(question: str, user_id: str = "anonymous",
+            patient_label: str | None = None) -> dict:
     return ask_graph.invoke(
         {
             "question": question,
             "user_id": user_id,
+            "patient_label": patient_label,
             "documents": [],
             "generation": None,
             "grounded": False,

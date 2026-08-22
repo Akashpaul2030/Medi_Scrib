@@ -63,6 +63,8 @@ export default function AppPage() {
   const [historySearched, setHistorySearched] = useState(false);
 
   const [askQuestion, setAskQuestion] = useState("");
+  // "" means every note; otherwise retrieval is limited to this patient.
+  const [askScope, setAskScope] = useState("");
   const [askResult, setAskResult] = useState<AskResponse | null>(null);
   const [askLoading, setAskLoading] = useState(false);
   const [genTime, setGenTime] = useState<number | null>(null);
@@ -227,7 +229,10 @@ export default function AppPage() {
       const res = await apiFetch(`/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: askQuestion }),
+        body: JSON.stringify({
+          question: askQuestion,
+          patient_label: askScope || null,
+        }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = (await res.json()) as AskResponse;
@@ -823,12 +828,28 @@ export default function AppPage() {
 
               {historyTab === "ask" && (
                 <div className="space-y-3">
+                  {/* Scoping to one patient is a clinical-safety control, not a
+                      convenience: unscoped answers can draw on several people's
+                      notes at once. */}
+                  <select
+                    value={askScope}
+                    onChange={(e) => setAskScope(e.target.value)}
+                    onFocus={() => { if (patients.length === 0) void loadPatients(); }}
+                    className="w-full rounded-md border border-line bg-paper px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-teal"
+                  >
+                    <option value="">All notes (may span patients)</option>
+                    {patients.map((p) => (
+                      <option key={p.patient_label} value={p.patient_label}>
+                        Only {p.patient_label} ({p.note_count})
+                      </option>
+                    ))}
+                  </select>
                   <div className="flex gap-2">
                     <input
                       value={askQuestion}
                       onChange={(e) => setAskQuestion(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") void doAsk(); }}
-                      placeholder="e.g. which patients were on sertraline?"
+                      placeholder={askScope ? `Ask about ${askScope}…` : "e.g. which patients were on sertraline?"}
                       className="flex-1 rounded-md border border-line bg-paper px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-teal"
                     />
                     <button
@@ -870,6 +891,13 @@ export default function AppPage() {
                             : "bg-coral/10 text-coral"
                         }`}>
                           {askResult.grounded ? "Grounded" : "Unverified"}
+                        </span>
+                        {/* Say plainly what was searched — an answer drawn from
+                            several patients should never look like one patient's. */}
+                        <span className="rounded-full bg-line/60 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-mute">
+                          {askResult.patient_label
+                            ? askResult.patient_label
+                            : "All patients"}
                         </span>
                         {askResult.rewritten && (
                           <span className="text-[10.5px] text-mute">Query rewritten</span>

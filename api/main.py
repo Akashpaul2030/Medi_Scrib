@@ -257,7 +257,7 @@ def get_note(note_id: str, user_id: str = Depends(get_user_id)) -> NoteDetail:
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest, user_id: str = Depends(get_user_id)) -> AskResponse:
     try:
-        result = run_ask(req.question, user_id=user_id)
+        result = run_ask(req.question, user_id=user_id, patient_label=req.patient_label)
         sources = [
             NoteRecord(
                 note_id=s["note_id"],
@@ -271,6 +271,7 @@ def ask(req: AskRequest, user_id: str = Depends(get_user_id)) -> AskResponse:
             sources=sources,
             grounded=result.get("grounded", False),
             rewritten=result.get("rewrite_count", 0) > 0,
+            patient_label=req.patient_label,
         )
     except Exception as e:
         logger.exception("Ask failed")

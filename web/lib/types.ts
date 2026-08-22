@@ -48,6 +48,8 @@ export interface AskResponse {
   sources: NoteRecord[];
   grounded: boolean;
   rewritten: boolean;
+  // Which patient the search was limited to, or null for all notes.
+  patient_label?: string | null;
 }
 
 export interface StructureResponse {

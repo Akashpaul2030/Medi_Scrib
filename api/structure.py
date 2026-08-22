@@ -26,6 +26,7 @@ Strict rules:
 - Never invent values, diagnoses, vitals, doses, routes, or frequencies.
 - If a field is ambiguous, missing, or could be interpreted multiple ways, choose the most conservative reading and add a short note to flags_for_review describing what to verify.
 - Preserve the clinician's phrasing where possible; do not editorialize.
+- ICD-10 coding is the one exception to "only what was stated". Assigning a code to a diagnosis the clinician did state is a lookup, not an inference, so code every diagnosis you can identify. When the dictation omits severity or episode detail, use the unspecified member of the correct family rather than omitting the code; leave it null only when the stated problem is too non-specific to map anywhere.
 - Capture every medication mentioned as continued, started, or titrated in medications_prescribed, with dose / route / frequency exactly as stated.
 - Every diagnosis or differential discussed goes in assessment with a status: active, resolved, or ruled_out. Rule-outs must be included explicitly with status='ruled_out'.
 - Suicidal ideation, homicidal ideation, passive death wishes, or psychotic symptoms — if present or denied — should be reflected in subjective, and any nuance (e.g. passive vs active SI) should be flagged for review."""

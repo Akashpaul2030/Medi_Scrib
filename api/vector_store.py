@@ -117,11 +117,24 @@ def save_note(
     return note_id
 
 
-def search_notes(query: str, user_id: str = "anonymous", limit: int = 5) -> list[dict]:
+def search_notes(query: str, user_id: str = "anonymous", limit: int = 5,
+                 patient_label: str | None = None) -> list[dict]:
+    """Semantic search over a user's notes, optionally narrowed to one patient.
+
+    The patient filter is applied in Qdrant rather than after retrieval, so a
+    scoped question can never surface another patient's note in the first
+    place — filtering afterwards would still have spent the slots.
+    """
+    conditions = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+    if patient_label:
+        conditions.append(
+            FieldCondition(key="patient_label", match=MatchValue(value=patient_label))
+        )
+
     hits = _client.query(
         collection_name=_COLLECTION,
         query_text=query,
-        query_filter=_user_filter(user_id),
+        query_filter=Filter(must=conditions),
         limit=limit,
     )
     results = []
