@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import pathlib
 import sys
@@ -61,3 +62,42 @@ def test_required_fields_present(case):
     case_id, _, actual = case
     for field in ["chief_complaint", "subjective", "objective", "plan"]:
         assert actual.get(field), f"{case_id}: empty required field '{field}'"
+
+
+# ICD-10 families each case's active diagnoses must land in. Only the family is
+# checked, not the full code: the model may legitimately pick F33.1 or F33.9
+# depending on how much severity detail it reads into the dictation, and
+# pinning the exact code would make this test fail on a correct answer.
+EXPECTED_ICD10_PREFIXES = {
+    "case_001": ["F33", "F41"],   # recurrent MDD, GAD
+    "case_002": ["F31"],          # bipolar II
+    "case_003": ["F90"],          # ADHD inattentive
+}
+
+
+def test_icd10_codes_assigned(case):
+    """Every codeable active diagnosis gets a code.
+
+    Regression guard: the system prompt used to say "use only what was stated",
+    which the model read as forbidding ICD-10 codes entirely — a clinician
+    never dictates "F33.1" — so this field came back null every time while the
+    landing page advertised it.
+    """
+    case_id, _, actual = case
+    active = [d for d in actual["assessment"] if d["status"] == "active"]
+    uncoded = [d["description"] for d in active if not d.get("icd10_code")]
+    assert not uncoded, f"{case_id}: active diagnoses with no ICD-10 code: {uncoded}"
+
+
+def test_icd10_codes_are_plausible(case):
+    """Codes land in the right chapter rather than being invented."""
+    case_id, _, actual = case
+    codes = [d["icd10_code"] for d in actual["assessment"]
+             if d["status"] == "active" and d.get("icd10_code")]
+    expected = EXPECTED_ICD10_PREFIXES[case_id]
+    for prefix in expected:
+        assert any(c.upper().startswith(prefix) for c in codes), \
+            f"{case_id}: no code starting {prefix} among {codes}"
+    for code in codes:
+        assert re.fullmatch(r"[A-Z]\d{2}(\.[A-Z0-9]{1,4})?", code.upper()), \
+            f"{case_id}: {code!r} is not a well-formed ICD-10-CM code"

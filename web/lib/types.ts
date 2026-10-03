@@ -48,11 +48,26 @@ export interface AskResponse {
   sources: NoteRecord[];
   grounded: boolean;
   rewritten: boolean;
+  // Which patient the search was limited to, or null for all notes.
+  patient_label?: string | null;
 }
 
 export interface StructureResponse {
   note: SOAPNote;
   note_id: string;
+  // Quota snapshot after this note was charged. Mirrors api/usage.py QuotaState.
+  usage?: QuotaState | null;
+}
+
+export interface QuotaState {
+  plan: string;
+  period: string;
+  allowance: number;
+  used: number;
+  remaining_allowance: number;
+  credits: number;
+  can_structure: boolean;
+  reason: string | null;
 }
 
 export interface PatientRecord {

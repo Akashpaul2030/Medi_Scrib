@@ -2,7 +2,7 @@ fastapi==0.115.5
 uvicorn[standard]==0.32.1
 instructor==1.7.0
 pydantic>=2.10
-openai==1.55.3
+openai==1.109.1
 python-dotenv==1.0.1
 tenacity==9.0.0
 loguru==0.7.2
@@ -19,4 +19,5 @@ langchain-core==0.3.59
 langchain-openai==0.3.16
 assemblyai==0.64.0
 reportlab==4.2.2
-stripe==11.4.1
+PyJWT==2.10.1
+httpx==0.28.1

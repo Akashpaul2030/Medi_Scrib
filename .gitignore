@@ -65,3 +65,16 @@ test_gemini.py
 
 # Dataset files (MTSamples content — not source code)
 Dataset/
+
+# Internal planning docs and local agent tooling — not part of the product
+CLAUDE.md
+PRD.md
+MVP_PLAN.md
+RAG_PLAN.md
+MILESTONE_*.md
+PROGRESS_*.md
+script*.md
+skills-lock.json
+.agents/
+.claude/
+marketing/

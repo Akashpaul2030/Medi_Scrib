@@ -2,6 +2,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from api.usage import QuotaState
+
 
 class DiagnosisStatus(str, Enum):
     active = "active"
@@ -15,10 +17,16 @@ class Diagnosis(BaseModel):
     )
     icd10_code: str | None = Field(
         default=None,
-        description="ICD-10-CM code for this diagnosis if clearly identifiable from the description, "
-                    "e.g. 'F33.1' for recurrent MDD moderate, 'F41.1' for GAD, 'F31.81' for bipolar II, "
-                    "'F43.10' for PTSD, 'F90.2' for ADHD combined. Use None if the diagnosis is too vague "
-                    "to code confidently — do not guess."
+        description="ICD-10-CM code for this diagnosis. Coding a diagnosis the clinician stated is a "
+                    "lookup, not a guess, so assign a code whenever the diagnosis names a codeable "
+                    "condition: e.g. 'F33.1' recurrent MDD moderate, 'F41.1' GAD, 'F31.81' bipolar II, "
+                    "'F43.10' PTSD, 'F90.2' ADHD combined type, 'F42.2' OCD, 'F40.10' social anxiety "
+                    "disorder, 'F10.20' alcohol use disorder moderate, 'G47.00' insomnia. If severity, "
+                    "episode, or remission status was not stated, use the unspecified member of the same "
+                    "family ('F33.9' for recurrent MDD of unstated severity, 'F31.9' for bipolar of "
+                    "unstated type) instead of leaving this empty. Use None only when the stated problem "
+                    "is too non-specific to map to any code at all, such as 'mood symptoms' or "
+                    "'possible personality issues'."
     )
     status: DiagnosisStatus = Field(
         description="One of 'active' (currently being treated), 'resolved' (no longer present), or 'ruled_out' (considered and excluded). If unclear, default to 'active' and add an entry to flags_for_review."
@@ -93,6 +101,11 @@ class NoteDetail(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
+    patient_label: str | None = Field(
+        default=None,
+        description="Restrict retrieval to one patient's notes. Omit to search "
+                    "across every note the user owns.",
+    )
 
 
 class AskResponse(BaseModel):
@@ -100,11 +113,16 @@ class AskResponse(BaseModel):
     sources: list[NoteRecord]
     grounded: bool
     rewritten: bool
+    # Echoes the scope actually used, so the UI can show what was searched.
+    patient_label: str | None = None
 
 
 class StructureResponse(BaseModel):
     note: SOAPNote
     note_id: str
+    # Quota snapshot after this note was charged, so the UI can update its
+    # meter without a second round trip.
+    usage: QuotaState | None = None
 
 
 class PatientRecord(BaseModel):
